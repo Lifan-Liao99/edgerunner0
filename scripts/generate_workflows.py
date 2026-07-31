@@ -89,7 +89,7 @@ jobs:
             dlt-${{{{ runner.os }}}}-{task.name}-
 
       - name: Run {task.name}
-        run: python {task.script_path}
+        run: python {task.script_path} --task-name {task.name}
 """
 
 

@@ -30,7 +30,8 @@ py -3.11 -m venv .venv
 Run one task locally only if you want a quick manual check:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\github_cpython_repo.py --skip-sheet
+.\.venv\Scripts\python.exe tasks\github_cpython_repo.py --task-name github_cpython_repo --skip-sheet
+.\.venv\Scripts\python.exe tasks\github_cpython_repo.py --github_cpython_repo --skip-sheet
 ```
 
 ## Adding A Task
@@ -46,6 +47,8 @@ cron_setting = "12 4 * * *"
 sheet_id = "YOUR_GOOGLE_SHEET_ID"
 tab_name = "my_job"
 gcp_auth = true
+api_endpoint = "https://api.example.com/data"
+api_timeout_seconds = 30
 ```
 
 3. Regenerate workflows:
@@ -57,11 +60,41 @@ gcp_auth = true
 The generated workflow runs:
 
 ```text
-python tasks/my_job.py
+python tasks/my_job.py --task-name my_job
+```
+
+For local command-line use, every task script also accepts the shorthand
+`--my_job` form:
+
+```powershell
+.\.venv\Scripts\python.exe tasks\my_job.py --my_job
 ```
 
 So the script owns its arguments, API calls, transforms, dlt pipeline, and side
 effects.
+
+The same script can power multiple tasks. Add multiple TOML entries with
+different `name` values and the same `script_path`; the workflow passes the
+selected task name with `--task-name`, and the script loads that entry's
+parameters.
+
+Every key in a task's TOML entry is available to that Python script:
+
+```python
+from edgerunner.task_config import load_task_settings, parse_task_args
+
+args = parse_task_args("Run my reusable automation script.")
+settings = load_task_settings(args.task_name)
+
+endpoint = settings["api_endpoint"]
+timeout = settings.get("api_timeout_seconds", 30)
+sheet_id = settings.sheet_id
+tab_name = settings.tab_name
+```
+
+Known fields such as `name`, `script_path`, `cron_setting`, `sheet_id`,
+`tab_name`, and `gcp_auth` have convenience properties. Custom fields are
+preserved in `settings.params` and can be accessed with `settings["key"]`.
 
 ## Google Sheets
 

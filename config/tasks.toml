@@ -8,6 +8,14 @@ cron_setting = "17 2 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "jsonplaceholder_posts"
 gcp_auth = true
+api_endpoint = "https://jsonplaceholder.typicode.com/posts"
+api_query = { userId = 1 }
+api_timeout_seconds = 30
+dlt_pipeline_name = "jsonplaceholder_posts_pipeline"
+dlt_dataset_name = "jsonplaceholder"
+dlt_table_name = "posts"
+dlt_write_disposition = "replace"
+sheet_write_mode = "replace"
 
 [[tasks]]
 name = "github_cpython_repo"
@@ -16,3 +24,25 @@ cron_setting = "23 2 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "github_cpython_repo"
 gcp_auth = true
+api_endpoint = "https://api.github.com/repos/python/cpython"
+api_timeout_seconds = 30
+dlt_pipeline_name = "github_cpython_repo_pipeline"
+dlt_dataset_name = "github"
+dlt_table_name = "repo_metadata"
+dlt_write_disposition = "replace"
+sheet_write_mode = "replace"
+
+[[tasks]]
+name = "github_cpython_repo_2"
+script_path = "tasks/github_cpython_repo.py"
+cron_setting = "23 2 * * *"
+sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
+tab_name = "github_cpython_repo_2"
+gcp_auth = true
+api_endpoint = "https://api.github.com/repos/python/cpython"
+api_timeout_seconds = 30
+dlt_pipeline_name = "github_cpython_repo_pipeline"
+dlt_dataset_name = "github"
+dlt_table_name = "repo_metadata"
+dlt_write_disposition = "replace"
+sheet_write_mode = "replace"

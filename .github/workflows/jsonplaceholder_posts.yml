@@ -46,4 +46,4 @@ jobs:
             dlt-${{ runner.os }}-jsonplaceholder_posts-
 
       - name: Run jsonplaceholder_posts
-        run: python tasks/jsonplaceholder_posts.py
+        run: python tasks/jsonplaceholder_posts.py --task-name jsonplaceholder_posts

@@ -46,4 +46,4 @@ jobs:
             dlt-${{ runner.os }}-github_cpython_repo-
 
       - name: Run github_cpython_repo
-        run: python tasks/github_cpython_repo.py
+        run: python tasks/github_cpython_repo.py --task-name github_cpython_repo
