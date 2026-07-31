@@ -5,6 +5,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# Build metadata written into src/ by `pip install -e .`
+*.egg-info/
+
 # dlt local state and generated destinations
 .dlt/
 *.duckdb
