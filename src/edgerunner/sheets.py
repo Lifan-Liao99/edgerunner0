@@ -10,6 +10,15 @@ from googleapiclient.discovery import build
 
 
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+
+# Local runs authenticate with user ADC. A user refresh token only carries the
+# scopes granted at login time, so the Sheets scope has to be requested there
+# rather than here; cloud-platform is included so gcloud can attach a quota
+# project. In GitHub Actions the auth step supplies credentials instead.
+ADC_LOGIN_COMMAND = (
+    f"gcloud auth application-default login --scopes={SHEETS_SCOPE},{CLOUD_PLATFORM_SCOPE}"
+)
 
 
 def write_records_to_sheet(
@@ -23,16 +32,16 @@ def write_records_to_sheet(
         credentials, _ = google.auth.default(scopes=[SHEETS_SCOPE])
     except DefaultCredentialsError as exc:
         raise RuntimeError(
-            "Google Application Default Credentials were not found. Run "
-            "`powershell -ExecutionPolicy Bypass -File .\\scripts\\setup_local_user_adc.ps1 "
-            "-ProjectId YOUR_PROJECT_ID`, finish the browser login, then retry."
+            "Google Application Default Credentials were not found. For a local run, "
+            f"sign in with `{ADC_LOGIN_COMMAND}` and finish the browser login, or pass "
+            "--skip-sheet to skip the Sheets write. In GitHub Actions this means the "
+            "'Authenticate to Google Cloud' step did not run."
         ) from exc
     except RefreshError as exc:
         raise RuntimeError(
             "Google credentials were found but could not be refreshed. Run "
-            "`gcloud auth application-default revoke`, then rerun "
-            "`powershell -ExecutionPolicy Bypass -File .\\scripts\\setup_local_user_adc.ps1 "
-            "-ProjectId YOUR_PROJECT_ID`."
+            "`gcloud auth application-default revoke`, then sign in again with "
+            f"`{ADC_LOGIN_COMMAND}`."
         ) from exc
 
     service = build("sheets", "v4", credentials=credentials, cache_discovery=False)

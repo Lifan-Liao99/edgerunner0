@@ -10,6 +10,7 @@ want to edit or regenerate workflows from your machine.
 
 ## Project Shape
 
+- `tasks/_template.py`: starting point to copy when adding a task.
 - `tasks/jsonplaceholder_posts.py`: complete example task for a public posts API.
 - `tasks/github_cpython_repo.py`: complete example task for GitHub's public API.
 - `config/tasks.toml`: task metadata such as script path, cron, sheet id, and tab.
@@ -36,7 +37,14 @@ Run one task locally only if you want a quick manual check:
 
 ## Adding A Task
 
-1. Create a complete Python script in `tasks/`, for example `tasks/my_job.py`.
+1. Copy `tasks/_template.py` to your own script, for example `tasks/my_job.py`.
+   The template carries the standard `main()` shape, the settings access
+   patterns, and the TOML entry that matches it.
+
+```powershell
+Copy-Item tasks\_template.py tasks\my_job.py
+```
+
 2. Add one entry to `config/tasks.toml`:
 
 ```toml
@@ -106,10 +114,11 @@ tab_name = "my_tab"
 ```
 
 The GitHub Actions service account must have Editor access to that spreadsheet.
-Share the target Sheet with:
+Share the target Sheet with the service account address, which is the value of
+the `GCP_SERVICE_ACCOUNT` repository secret:
 
 ```text
-edgerunner-actions@edgerunner-504102.iam.gserviceaccount.com
+YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
 Google Sheets permissions are controlled by sharing the spreadsheet, not by a
@@ -123,11 +132,13 @@ repository secrets:
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`
 - `GCP_SERVICE_ACCOUNT`
 
-The current values are:
+Both are environment specific and are not recorded in this repo. They take the
+following shape, and the exact values for an environment come from the WIF setup
+below:
 
 ```text
-GCP_WORKLOAD_IDENTITY_PROVIDER=projects/252048344658/locations/global/workloadIdentityPools/github/providers/edgerunner0
-GCP_SERVICE_ACCOUNT=edgerunner-actions@edgerunner-504102.iam.gserviceaccount.com
+GCP_WORKLOAD_IDENTITY_PROVIDER=projects/YOUR_PROJECT_NUMBER/locations/global/workloadIdentityPools/YOUR_POOL_ID/providers/YOUR_PROVIDER_ID
+GCP_SERVICE_ACCOUNT=YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
 Each generated workflow has exactly one job and can be run manually with
@@ -135,15 +146,16 @@ Each generated workflow has exactly one job and can be run manually with
 
 ## WIF Setup Reference
 
-These commands configure GitHub Actions from `Lifan-Liao99/edgerunner0` to
-impersonate the service account in project `edgerunner-504102`.
+These commands configure GitHub Actions in one repository to impersonate a
+service account in one GCP project. Fill in the five values at the top for your
+own environment; the rest of the script derives from them.
 
 ```powershell
-$PROJECT_ID = "edgerunner-504102"
-$REPO = "Lifan-Liao99/edgerunner0"
-$POOL_ID = "github"
-$PROVIDER_ID = "edgerunner0"
-$SA_NAME = "edgerunner-actions"
+$PROJECT_ID = "YOUR_PROJECT_ID"
+$REPO = "YOUR_GITHUB_OWNER/YOUR_GITHUB_REPO"
+$POOL_ID = "YOUR_POOL_ID"
+$PROVIDER_ID = "YOUR_PROVIDER_ID"
+$SA_NAME = "YOUR_SERVICE_ACCOUNT"
 $SA_EMAIL = "$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 
 gcloud config set project $PROJECT_ID
@@ -169,7 +181,7 @@ gcloud iam workload-identity-pools providers create-oidc $PROVIDER_ID `
   --project=$PROJECT_ID `
   --location="global" `
   --workload-identity-pool=$POOL_ID `
-  --display-name="edgerunner0 GitHub provider" `
+  --display-name="$PROVIDER_ID GitHub provider" `
   --issuer-uri="https://token.actions.githubusercontent.com" `
   --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref" `
   --attribute-condition="assertion.repository == '$REPO'"
