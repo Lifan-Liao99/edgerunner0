@@ -16,7 +16,6 @@ class TaskSettings:
     sheet_id: str
     tab_name: str
     gcp_auth: bool = True
-    local_test: bool = False
 
 
 def load_task_settings(task_name: str, config_path: Path = DEFAULT_CONFIG_PATH) -> TaskSettings:

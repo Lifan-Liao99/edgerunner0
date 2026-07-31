@@ -8,8 +8,6 @@ import google.auth
 from google.auth.exceptions import DefaultCredentialsError, RefreshError
 from googleapiclient.discovery import build
 
-from edgerunner.env import resolve_env_reference
-
 
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 
@@ -21,7 +19,6 @@ def write_records_to_sheet(
     records: list[dict[str, Any]],
     write_mode: str = "replace",
 ) -> None:
-    spreadsheet_id = resolve_env_reference(spreadsheet_id)
     try:
         credentials, _ = google.auth.default(scopes=[SHEETS_SCOPE])
     except DefaultCredentialsError as exc:

@@ -4,9 +4,7 @@ import argparse
 from typing import Any
 
 import dlt
-from dotenv import load_dotenv
 import requests
-from requests import RequestException
 
 from edgerunner.sheets import write_records_to_sheet
 from edgerunner.task_config import load_task_settings
@@ -14,41 +12,19 @@ from edgerunner.task_config import load_task_settings
 
 TASK_NAME = "github_cpython_repo"
 API_ENDPOINT = "https://api.github.com/repos/python/cpython"
-SAMPLE_REPO = {
-    "full_name": "python/cpython",
-    "description": "The Python programming language",
-    "html_url": "https://github.com/python/cpython",
-    "stargazers_count": 0,
-    "forks_count": 0,
-    "open_issues_count": 0,
-    "default_branch": "main",
-    "updated_at": "2026-07-31T00:00:00Z",
-    "pushed_at": "2026-07-31T00:00:00Z",
-    "owner": {"login": "python"},
-    "license": {"name": "Python Software Foundation License"},
-}
 
 
-def fetch_repo(*, use_sample_on_failure: bool) -> dict[str, Any]:
-    try:
-        response = requests.get(
-            API_ENDPOINT,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()
-    except RequestException as exc:
-        if use_sample_on_failure:
-            print(f"Could not reach {API_ENDPOINT}; using bundled sample data. Error: {exc}")
-            return SAMPLE_REPO
-        raise RuntimeError(
-            f"Could not reach {API_ENDPOINT}. Check network/proxy access or rerun with "
-            "--use-sample-on-failure for local smoke testing."
-        ) from exc
+def fetch_repo() -> dict[str, Any]:
+    response = requests.get(
+        API_ENDPOINT,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def transform_repo(repo: dict[str, Any]) -> dict[str, Any]:
@@ -83,15 +59,13 @@ def load_with_dlt(record: dict[str, Any]) -> str:
 
 
 def main() -> None:
-    load_dotenv()
     settings = load_task_settings(TASK_NAME)
 
     parser = argparse.ArgumentParser(description="Load GitHub CPython repo metadata.")
     parser.add_argument("--skip-sheet", action="store_true")
-    parser.add_argument("--use-sample-on-failure", action="store_true")
     args = parser.parse_args()
 
-    record = transform_repo(fetch_repo(use_sample_on_failure=args.use_sample_on_failure))
+    record = transform_repo(fetch_repo())
     load_info = load_with_dlt(record)
 
     if not args.skip_sheet:
