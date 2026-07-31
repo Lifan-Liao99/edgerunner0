@@ -4,7 +4,7 @@ name: github_cpython_repo
 on:
   workflow_dispatch:
   schedule:
-    - cron: "23 2 * * *"
+    - cron: "32 16 * * *"
 
 permissions:
   contents: read

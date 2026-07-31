@@ -1,10 +1,16 @@
 # This file only controls workflow generation. Each task's actual behavior lives
 # in its Python script under tasks/.
+#
+# cron_setting is UTC, because that is how GitHub Actions interprets it, and it
+# does not follow daylight saving. The values below target roughly 12:30 in the
+# US Eastern afternoon: 16:3x UTC is 12:3x EDT in summer and 11:3x EST in winter.
+# To hold the Eastern wall clock steady, shift these by an hour at each DST
+# change (2026: Mar 8 and Nov 1).
 
 [[tasks]]
 name = "jsonplaceholder_posts"
 script_path = "tasks/jsonplaceholder_posts.py"
-cron_setting = "17 2 * * *"
+cron_setting = "28 16 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "jsonplaceholder_posts"
 gcp_auth = true
@@ -20,7 +26,7 @@ sheet_write_mode = "replace"
 [[tasks]]
 name = "github_cpython_repo"
 script_path = "tasks/github_cpython_repo.py"
-cron_setting = "23 2 * * *"
+cron_setting = "32 16 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "github_cpython_repo"
 gcp_auth = true
@@ -35,7 +41,7 @@ sheet_write_mode = "replace"
 [[tasks]]
 name = "github_cpython_repo_2"
 script_path = "tasks/github_cpython_repo.py"
-cron_setting = "23 2 * * *"
+cron_setting = "36 16 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "github_cpython_repo_2"
 gcp_auth = true

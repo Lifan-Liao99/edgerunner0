@@ -4,7 +4,7 @@ name: jsonplaceholder_posts
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 2 * * *"
+    - cron: "28 16 * * *"
 
 permissions:
   contents: read
