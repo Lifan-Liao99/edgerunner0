@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# dlt local state and generated destinations
+.dlt/
+*.duckdb
+*.duckdb.wal
+
+# Google GitHub Action generated credentials
+gha-creds-*.json
+
+# Local secrets
+.env
+*.secrets.toml

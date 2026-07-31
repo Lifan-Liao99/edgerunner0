@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edgerunner-automation-tasks"
+version = "0.1.0"
+description = "Run standalone Python automation task scripts from GitHub Actions."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "dlt[duckdb]>=1.23,<2.0",
+  "google-api-python-client>=2.170,<3.0",
+  "google-auth>=2.40,<3.0",
+  "google-cloud-secret-manager>=2.24,<3.0",
+  "python-dotenv>=1.1,<2.0",
+  "requests>=2.32,<3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

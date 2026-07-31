@@ -1,0 +1,20 @@
+# This file only controls workflow generation. Each task's actual behavior lives
+# in its Python script under tasks/.
+
+[[tasks]]
+name = "jsonplaceholder_posts"
+script_path = "tasks/jsonplaceholder_posts.py"
+cron_setting = "17 2 * * *"
+sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
+tab_name = "jsonplaceholder_posts"
+local_test = true
+gcp_auth = true
+
+[[tasks]]
+name = "github_cpython_repo"
+script_path = "tasks/github_cpython_repo.py"
+cron_setting = "23 2 * * *"
+sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
+tab_name = "github_cpython_repo"
+local_test = true
+gcp_auth = true
