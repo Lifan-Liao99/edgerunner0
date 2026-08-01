@@ -56,7 +56,7 @@ sheet_write_mode = "replace"
 [[tasks]]
 name = "google_sheet_to_sheet"
 script_path = "tasks/google_sheet_to_sheet.py"
-cron_setting = "0 */2 * * *"
+cron_setting = "3 */2 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "target_tab"
 gcp_auth = true
