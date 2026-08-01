@@ -13,6 +13,7 @@ want to edit or regenerate workflows from your machine.
 - `tasks/demo/_template.py`: starting point to copy when adding a task.
 - `tasks/demo/jsonplaceholder_posts.py`: complete example task for a public posts API.
 - `tasks/demo/github_cpython_repo.py`: complete example task for GitHub's public API.
+- `tasks/shared/google_sheet_to_sheet.py`: reusable task that is not tied to one client.
 - `config/tasks.toml`: task metadata such as script path, cron, sheet id, and tab.
 - `src/edgerunner/sheets.py`: small shared helper for writing records to Sheets.
 - `src/edgerunner/secrets.py`: small shared helper for Secret Manager.
@@ -136,8 +137,11 @@ api_timeout_seconds = 30
 
 Generated workflows stay in `.github/workflows`, because GitHub Actions only
 loads workflow files from that directory's first level. The generator prefixes
-workflow filenames with the client folder, so `tasks/demo/google_sheet_to_sheet.py`
-generates `.github/workflows/demo__google_sheet_to_sheet.yml`.
+workflow filenames with the folder under `tasks`, so `tasks/demo/my_job.py`
+generates `.github/workflows/demo__my_job.yml`.
+
+Use `tasks/shared` for reusable tasks that are not tied to one client. Client
+specific scripts can live in folders such as `tasks/bestbuy` or `tasks/petco`.
 
 Enable the repo hook once so commits that include `config/tasks.toml`
 automatically regenerate and stage workflow files:
@@ -292,7 +296,7 @@ workflows install it through `python -m pip install -e .`.
 
 ### Sheet To Sheet Task
 
-`tasks/demo/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
+`tasks/shared/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
 Google Sheet tab. It reads columns A:F, treats the first source row as the header
 row, filters records whose column A date is between 5 days ago and yesterday,
 then writes the filtered pandas DataFrame to the target tab.
@@ -302,7 +306,7 @@ Update this entry in `config/tasks.toml` before running it:
 ```toml
 [[tasks]]
 name = "google_sheet_to_sheet"
-script_path = "tasks/demo/google_sheet_to_sheet.py"
+script_path = "tasks/shared/google_sheet_to_sheet.py"
 cron_setting = "40 16 * * *"
 sheet_id = "TARGET_GOOGLE_SHEET_ID"
 tab_name = "target_tab"
@@ -323,13 +327,13 @@ manual_overrides = [
 Run it locally without writing the target Sheet:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\demo\google_sheet_to_sheet.py --google_sheet_to_sheet --skip-sheet
+.\.venv\Scripts\python.exe tasks\shared\google_sheet_to_sheet.py --google_sheet_to_sheet --skip-sheet
 ```
 
 Run it locally and write the target Sheet:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\demo\google_sheet_to_sheet.py --google_sheet_to_sheet
+.\.venv\Scripts\python.exe tasks\shared\google_sheet_to_sheet.py --google_sheet_to_sheet
 ```
 
 This task uses the GitHub Actions service account from the `GCP_SERVICE_ACCOUNT`
