@@ -71,22 +71,3 @@ manual_overrides = [
     { name = "startdate", path = "start_date_offset", description = "Start date, YYYY-MM-DD. Converted to start_date_offset using New York time." },
     { name = "enddate", path = "end_date_offset", description = "End date, YYYY-MM-DD. Converted to end_date_offset using New York time." },
 ]
-
-[[tasks]]
-name = "google_sheet_to_sheet_2"
-script_path = "tasks/google_sheet_to_sheet.py"
-cron_setting = "44 16 * * *"
-sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
-tab_name = "target_tab"
-gcp_auth = true
-source_sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
-source_tab_name = "source_tab"
-source_range = "source_tab!A:F"
-start_date_offset = -10
-end_date_offset = -1
-sheet_write_mode = "replace"
-manual_overrides = [
-    { name = "source_range", path = "source_range", description = "A1 range to copy, for example source_tab!A:F" },
-    { name = "startdate", path = "start_date_offset", description = "Start date, YYYY-MM-DD. Converted to start_date_offset using New York time." },
-    { name = "enddate", path = "end_date_offset", description = "End date, YYYY-MM-DD. Converted to end_date_offset using New York time." },
-]
