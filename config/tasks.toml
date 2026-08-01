@@ -52,3 +52,20 @@ dlt_dataset_name = "github"
 dlt_table_name = "repo_metadata"
 dlt_write_disposition = "replace"
 sheet_write_mode = "replace"
+
+[[tasks]]
+name = "google_sheet_to_sheet"
+script_path = "tasks/google_sheet_to_sheet.py"
+cron_setting = "40 16 * * *"
+sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
+tab_name = "target_tab"
+gcp_auth = true
+source_sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
+source_tab_name = "source_tab"
+source_range = "source_tab!A:F"
+start_date_offset = -5
+end_date_offset = -1
+sheet_write_mode = "replace"
+manual_overrides = [
+  { name = "source_range", path = "source_range", description = "A1 range to copy, for example source_tab!A:F" },
+]

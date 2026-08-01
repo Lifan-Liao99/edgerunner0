@@ -104,6 +104,68 @@ Known fields such as `name`, `script_path`, `cron_setting`, `sheet_id`,
 `tab_name`, and `gcp_auth` have convenience properties. Custom fields are
 preserved in `settings.params` and can be accessed with `settings["key"]`.
 
+## Manual Workflow Overrides
+
+Tasks can expose selected TOML settings as inputs when someone manually runs a
+workflow from GitHub Actions. Scheduled runs ignore these inputs and use the
+default values checked into `config/tasks.toml`.
+
+Date windows use reserved offset settings:
+
+```toml
+start_date_offset = -30
+end_date_offset = -1
+```
+
+When a task has these fields, the generated manual workflow gets reserved
+`startdate` and `enddate` inputs. Enter dates as `YYYY-MM-DD`; the framework
+converts them back into `start_date_offset` and `end_date_offset` before the task
+script reads `settings`. For example, if today is `2026-08-01`, entering
+`startdate=2026-07-02` and `enddate=2026-07-31` gives offsets `-30` and `-1`.
+The framework defines "today" in `America/New_York`, even on GitHub-hosted
+runners.
+You do not need to list `startdate` or `enddate` in `manual_overrides`.
+
+Task scripts should turn offsets into the API's actual query parameter names:
+
+```python
+from edgerunner.task_config import date_from_offset
+
+params = {
+    **settings.get("api_query", {}),
+    "start_date": date_from_offset(settings["start_date_offset"]),
+    "end_date": date_from_offset(settings["end_date_offset"]),
+}
+```
+
+For non-date fields, add a `manual_overrides` list to a task:
+
+```toml
+[[tasks]]
+name = "api_with_dates"
+script_path = "tasks/api_with_dates.py"
+cron_setting = "0 12 * * *"
+sheet_id = "YOUR_GOOGLE_SHEET_ID"
+tab_name = "api_with_dates"
+gcp_auth = true
+api_endpoint = "https://api.example.com/data"
+api_query = { limit = 100 }
+manual_overrides = [
+  { name = "limit", path = "api_query.limit", description = "API result limit for manual runs" },
+]
+```
+
+`name` becomes the GitHub Actions manual input name. `path` points to the TOML
+setting to override, and can use dot notation for nested tables. Empty manual
+inputs are ignored, so a manually triggered workflow can override only one field
+and leave the rest at their defaults.
+
+For local testing, pass the same values with `--override`:
+
+```powershell
+.\.venv\Scripts\python.exe tasks\api_with_dates.py --api_with_dates --override startdate=2026-08-01 --override enddate=2026-08-15
+```
+
 ## Google Sheets
 
 For checked-in tasks, put the Sheet ID directly in `config/tasks.toml`:
@@ -123,6 +185,51 @@ YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
 
 Google Sheets permissions are controlled by sharing the spreadsheet, not by a
 GCP IAM role.
+
+### Sheet To Sheet Task
+
+`tasks/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
+Google Sheet tab. It reads columns A:F, treats the first source row as the header
+row, filters records whose column A date is between 5 days ago and yesterday,
+then writes the filtered rows to the target tab.
+
+Update this entry in `config/tasks.toml` before running it:
+
+```toml
+[[tasks]]
+name = "google_sheet_to_sheet"
+script_path = "tasks/google_sheet_to_sheet.py"
+cron_setting = "40 16 * * *"
+sheet_id = "TARGET_GOOGLE_SHEET_ID"
+tab_name = "target_tab"
+gcp_auth = true
+source_sheet_id = "SOURCE_GOOGLE_SHEET_ID"
+source_tab_name = "source_tab"
+source_range = "source_tab!A:F"
+start_date_offset = -5
+end_date_offset = -1
+sheet_write_mode = "replace"
+manual_overrides = [
+  { name = "source_range", path = "source_range", description = "A1 range to copy, for example source_tab!A:F" },
+]
+```
+
+Run it locally without writing the target Sheet:
+
+```powershell
+.\.venv\Scripts\python.exe tasks\google_sheet_to_sheet.py --google_sheet_to_sheet --skip-sheet
+```
+
+Run it locally and write the target Sheet:
+
+```powershell
+.\.venv\Scripts\python.exe tasks\google_sheet_to_sheet.py --google_sheet_to_sheet
+```
+
+This task uses the GitHub Actions service account from the `GCP_SERVICE_ACCOUNT`
+repository secret. Share the source spreadsheet and target spreadsheet with that
+service account address. Give it Viewer access on the source and Editor access
+on the target.
 
 ## GitHub Actions Auth
 

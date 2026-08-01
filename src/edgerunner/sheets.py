@@ -28,23 +28,7 @@ def write_records_to_sheet(
     records: list[dict[str, Any]],
     write_mode: str = "replace",
 ) -> None:
-    try:
-        credentials, _ = google.auth.default(scopes=[SHEETS_SCOPE])
-    except DefaultCredentialsError as exc:
-        raise RuntimeError(
-            "Google Application Default Credentials were not found. For a local run, "
-            f"sign in with `{ADC_LOGIN_COMMAND}` and finish the browser login, or pass "
-            "--skip-sheet to skip the Sheets write. In GitHub Actions this means the "
-            "'Authenticate to Google Cloud' step did not run."
-        ) from exc
-    except RefreshError as exc:
-        raise RuntimeError(
-            "Google credentials were found but could not be refreshed. Run "
-            "`gcloud auth application-default revoke`, then sign in again with "
-            f"`{ADC_LOGIN_COMMAND}`."
-        ) from exc
-
-    service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    service = _build_sheets_service()
 
     values = _records_to_values(records)
     target_range = f"{tab_name}!A1"
@@ -87,6 +71,45 @@ def write_records_to_sheet(
     ).execute()
 
 
+def read_records_from_sheet(
+    *,
+    spreadsheet_id: str,
+    tab_name: str,
+    read_range: str | None = None,
+) -> list[dict[str, Any]]:
+    service = _build_sheets_service()
+    range_name = read_range or tab_name
+    values = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=range_name,
+    ).execute().get("values", [])
+    return _values_to_records(values)
+
+
+def _build_sheets_service():
+    credentials = _load_credentials()
+    return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+
+
+def _load_credentials():
+    try:
+        credentials, _ = google.auth.default(scopes=[SHEETS_SCOPE])
+        return credentials
+    except DefaultCredentialsError as exc:
+        raise RuntimeError(
+            "Google Application Default Credentials were not found. For a local run, "
+            f"sign in with `{ADC_LOGIN_COMMAND}` and finish the browser login, or pass "
+            "--skip-sheet to skip the Sheets write. In GitHub Actions this means the "
+            "'Authenticate to Google Cloud' step did not run."
+        ) from exc
+    except RefreshError as exc:
+        raise RuntimeError(
+            "Google credentials were found but could not be refreshed. Run "
+            "`gcloud auth application-default revoke`, then sign in again with "
+            f"`{ADC_LOGIN_COMMAND}`."
+        ) from exc
+
+
 def _records_to_values(records: list[dict[str, Any]]) -> list[list[Any]]:
     if not records:
         return []
@@ -122,3 +145,30 @@ def _cell_value(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)):
         return value
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _values_to_records(values: list[list[Any]]) -> list[dict[str, Any]]:
+    if not values:
+        return []
+
+    headers = _normalize_headers(values[0])
+    records: list[dict[str, Any]] = []
+    for row in values[1:]:
+        record = {
+            header: row[index] if index < len(row) else ""
+            for index, header in enumerate(headers)
+        }
+        if any(value != "" for value in record.values()):
+            records.append(record)
+    return records
+
+
+def _normalize_headers(header_row: list[Any]) -> list[str]:
+    seen: dict[str, int] = {}
+    headers: list[str] = []
+    for index, raw_header in enumerate(header_row, start=1):
+        header = str(raw_header).strip() or f"column_{index}"
+        count = seen.get(header, 0)
+        seen[header] = count + 1
+        headers.append(header if count == 0 else f"{header}_{count + 1}")
+    return headers

@@ -26,6 +26,11 @@ so add or drop keys as the job needs:
     dlt_table_name = "my_table"
     dlt_write_disposition = "replace"
     sheet_write_mode = "replace"
+    start_date_offset = -30
+    end_date_offset = -1
+    manual_overrides = [
+      { name = "limit", path = "api_query.limit", description = "API result limit for manual runs" },
+    ]
 
 Check it locally without writing to Sheets:
 
@@ -121,6 +126,16 @@ def main() -> None:
     #
     # Prefer settings[...] for anything the task cannot run without, so a
     # misconfigured entry fails immediately instead of silently using a default.
+    #
+    # If the TOML entry has manual_overrides, GitHub workflow_dispatch inputs and
+    # local --override values are merged before the settings reach this script.
+    # Scheduled runs keep the default TOML values.
+    #
+    # start_date_offset and end_date_offset are reserved fields. If a task has
+    # them, generated workflows expose startdate/enddate inputs for manual runs;
+    # those YYYY-MM-DD dates are converted back into integer offsets using New
+    # York time. Use edgerunner.task_config.date_from_offset() to turn offsets
+    # into API date strings with the same timezone convention.
     #
     # One script can back several tasks: add multiple TOML entries with the same
     # script_path and different name values. --task-name picks which entry loads,
