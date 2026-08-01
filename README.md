@@ -398,10 +398,11 @@ branch_name
 trigger
 ```
 
-The GitHub workflow posts those variables as a JSON payload. Slack owns the
-message shape, so you can build the success/failure wording in Slack using the
-variables above. `error_log` contains the last 80 task log lines on failure and
-is empty on success.
+Generated workflows call `scripts/send_slack_alert.py` as the final step. The
+script posts those variables as a JSON payload, and Slack owns the message
+shape, so you can build the success/failure wording in Slack using the variables
+above. `error_log` contains the last 80 task log lines on failure and is empty
+on success.
 
 ## WIF Setup Reference
 
