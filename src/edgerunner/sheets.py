@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from math import isfinite
 import json
 from typing import Any
 
@@ -25,12 +26,12 @@ def write_records_to_sheet(
     *,
     spreadsheet_id: str,
     tab_name: str,
-    records: list[dict[str, Any]],
+    records: list[dict[str, Any]] | Any,
     write_mode: str = "replace",
 ) -> None:
     service = _build_sheets_service()
 
-    values = _records_to_values(records)
+    values = _tabular_data_to_values(records)
     target_range = f"{tab_name}!A1"
 
     if write_mode == "replace":
@@ -110,6 +111,28 @@ def _load_credentials():
         ) from exc
 
 
+def _tabular_data_to_values(data: list[dict[str, Any]] | Any) -> list[list[Any]]:
+    if _is_pandas_dataframe(data):
+        return _dataframe_to_values(data)
+    return _records_to_values(data)
+
+
+def _is_pandas_dataframe(value: Any) -> bool:
+    return hasattr(value, "columns") and hasattr(value, "itertuples") and hasattr(value, "empty")
+
+
+def _dataframe_to_values(dataframe: Any) -> list[list[Any]]:
+    headers = [str(column) for column in dataframe.columns]
+    if dataframe.empty:
+        return [headers] if headers else []
+
+    rows = [
+        [_cell_value(value) for value in row]
+        for row in dataframe.itertuples(index=False, name=None)
+    ]
+    return [headers, *rows]
+
+
 def _records_to_values(records: list[dict[str, Any]]) -> list[list[Any]]:
     if not records:
         return []
@@ -142,9 +165,35 @@ def _flatten_record(record: dict[str, Any], prefix: str = "") -> dict[str, Any]:
 def _cell_value(value: Any) -> Any:
     if value is None:
         return ""
+    if _is_missing_value(value):
+        return ""
+    if _is_numpy_scalar(value):
+        return _cell_value(value.item())
+    if hasattr(value, "isoformat") and not isinstance(value, str):
+        return value.isoformat()
     if isinstance(value, (str, int, float, bool)):
         return value
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _is_missing_value(value: Any) -> bool:
+    if value.__class__.__name__ in {"NAType", "NaTType"}:
+        return True
+    if isinstance(value, float) and not isfinite(value):
+        return True
+    try:
+        return bool(value is not value or value != value)
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_numpy_scalar(value: Any) -> bool:
+    if not hasattr(value, "item") or isinstance(value, (str, bytes)):
+        return False
+    try:
+        return value.item() is not value
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 def _values_to_records(values: list[list[Any]]) -> list[dict[str, Any]]:

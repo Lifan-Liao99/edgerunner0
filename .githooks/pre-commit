@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -qx "config/tasks.toml"; then
+  exit 0
+fi
+
+echo "config/tasks.toml is staged; regenerating GitHub workflows..."
+
+run_python() {
+  if [ -x ".venv/Scripts/python.exe" ] && ".venv/Scripts/python.exe" -c "pass" >/dev/null 2>&1; then
+    ".venv/Scripts/python.exe" "$@"
+    return
+  fi
+
+  if [ -x ".venv/bin/python" ] && ".venv/bin/python" -c "pass" >/dev/null 2>&1; then
+    ".venv/bin/python" "$@"
+    return
+  fi
+
+  if command -v python >/dev/null 2>&1; then
+    python "$@"
+    return
+  fi
+
+  if command -v py >/dev/null 2>&1; then
+    py -3.11 "$@"
+    return
+  fi
+
+  echo "Could not find a working Python interpreter to run scripts/generate_workflows.py." >&2
+  echo "Install Python 3.11 or recreate .venv, then retry the commit." >&2
+  exit 1
+}
+
+run_python scripts/generate_workflows.py
+
+git add .github/workflows
+echo "Regenerated workflows have been staged."

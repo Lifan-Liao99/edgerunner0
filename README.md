@@ -20,12 +20,55 @@ want to edit or regenerate workflows from your machine.
 
 ## Local Setup
 
-Install Python 3.11+ and create a virtual environment:
+Install Python 3.11+ first.
+
+Windows options:
+
+```powershell
+# Option 1: winget
+winget install Python.Python.3.11
+
+# Option 2: download the installer from https://www.python.org/downloads/windows/
+# During install, check "Add python.exe to PATH".
+```
+
+Verify Windows can find Python:
+
+```powershell
+py -3.11 --version
+```
+
+macOS options:
+
+```bash
+# Option 1: Homebrew
+brew install python@3.11
+
+# Option 2: download the installer from https://www.python.org/downloads/macos/
+```
+
+Verify macOS can find Python:
+
+```bash
+python3.11 --version
+```
+
+Create and install the virtual environment on Windows:
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -U pip
 .\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -c "import pandas as pd; print(pd.__version__)"
+```
+
+Create and install the virtual environment on macOS:
+
+```bash
+python3.11 -m venv .venv
+./.venv/bin/python -m pip install -U pip
+./.venv/bin/python -m pip install -e .
+./.venv/bin/python -c "import pandas as pd; print(pd.__version__)"
 ```
 
 Run one task locally only if you want a quick manual check:
@@ -33,6 +76,13 @@ Run one task locally only if you want a quick manual check:
 ```powershell
 .\.venv\Scripts\python.exe tasks\github_cpython_repo.py --task-name github_cpython_repo --skip-sheet
 .\.venv\Scripts\python.exe tasks\github_cpython_repo.py --github_cpython_repo --skip-sheet
+```
+
+macOS equivalent:
+
+```bash
+./.venv/bin/python tasks/github_cpython_repo.py --task-name github_cpython_repo --skip-sheet
+./.venv/bin/python tasks/github_cpython_repo.py --github_cpython_repo --skip-sheet
 ```
 
 ## Adding A Task
@@ -65,6 +115,13 @@ api_timeout_seconds = 30
 .\.venv\Scripts\python.exe scripts\generate_workflows.py
 ```
 
+Enable the repo hook once so commits that include `config/tasks.toml`
+automatically regenerate and stage workflow files:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
 The generated workflow runs:
 
 ```text
@@ -89,20 +146,39 @@ parameters.
 Every key in a task's TOML entry is available to that Python script:
 
 ```python
-from edgerunner.task_config import load_task_settings, parse_task_args
+from typing import Any
 
-args = parse_task_args("Run my reusable automation script.")
-settings = load_task_settings(args.task_name)
+from edgerunner.task_config import TaskSettings, run_task
 
-endpoint = settings["api_endpoint"]
-timeout = settings.get("api_timeout_seconds", 30)
-sheet_id = settings.sheet_id
-tab_name = settings.tab_name
+
+def run(settings: TaskSettings) -> dict[str, Any]:
+    endpoint = settings["api_endpoint"]
+    timeout = settings.get("api_timeout_seconds", 30)
+    sheet_id = settings.sheet_id
+    tab_name = settings.tab_name
+    return {
+        "task": settings.name,
+        "endpoint": endpoint,
+        "timeout": timeout,
+        "sheet_id": sheet_id,
+        "tab_name": tab_name,
+    }
+
+
+def main() -> None:
+    run_task(run)
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 Known fields such as `name`, `script_path`, `cron_setting`, `sheet_id`,
 `tab_name`, and `gcp_auth` have convenience properties. Custom fields are
 preserved in `settings.params` and can be accessed with `settings["key"]`.
+The shared `run_task()` wrapper handles CLI parsing, TOML loading, manual
+overrides, and printing the value returned by `run(settings)`. `--skip-sheet` is
+available to the task as `settings.skip_sheet`.
 
 ## Manual Workflow Overrides
 
@@ -186,12 +262,16 @@ YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
 Google Sheets permissions are controlled by sharing the spreadsheet, not by a
 GCP IAM role.
 
+`write_records_to_sheet()` accepts either `list[dict]` records or a pandas
+DataFrame. Pandas is part of the default project dependencies, so generated
+workflows install it through `python -m pip install -e .`.
+
 ### Sheet To Sheet Task
 
 `tasks/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
 Google Sheet tab. It reads columns A:F, treats the first source row as the header
 row, filters records whose column A date is between 5 days ago and yesterday,
-then writes the filtered rows to the target tab.
+then writes the filtered pandas DataFrame to the target tab.
 
 Update this entry in `config/tasks.toml` before running it:
 

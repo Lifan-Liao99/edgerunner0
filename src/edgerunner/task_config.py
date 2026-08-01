@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 import copy
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -40,6 +41,11 @@ class TaskSettings:
     def get(self, key: str, default: Any = None) -> Any:
         return self.params.get(key, default)
 
+    def with_runtime_options(self, *, skip_sheet: bool) -> TaskSettings:
+        params = copy.deepcopy(self.params)
+        params["skip_sheet"] = skip_sheet
+        return TaskSettings(params=params)
+
     @property
     def name(self) -> str:
         return str(self.params["name"])
@@ -63,6 +69,10 @@ class TaskSettings:
     @property
     def gcp_auth(self) -> bool:
         return bool(self.params.get("gcp_auth", True))
+
+    @property
+    def skip_sheet(self) -> bool:
+        return bool(self.params.get("skip_sheet", False))
 
     @property
     def manual_overrides(self) -> list[dict[str, str]]:
@@ -93,8 +103,8 @@ def load_all_task_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> dict[str,
     return tasks
 
 
-def parse_task_args(description: str) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=description)
+def parse_task_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--task-name",
         help="Task name from config/tasks.toml. Also supports shorthand like --my_task.",
@@ -130,6 +140,15 @@ def parse_task_args(description: str) -> argparse.Namespace:
         os.environ[OVERRIDES_JSON_ENV] = json.dumps(parsed_overrides, ensure_ascii=True)
 
     return args
+
+
+def run_task(task_func: Callable[[TaskSettings], Any]) -> Any:
+    args = parse_task_args()
+    settings = load_task_settings(args.task_name).with_runtime_options(skip_sheet=args.skip_sheet)
+    result = task_func(settings)
+    if result is not None:
+        print(result)
+    return result
 
 
 def normalize_manual_overrides(raw_overrides: Any) -> list[dict[str, str]]:

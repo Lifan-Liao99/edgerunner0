@@ -5,10 +5,10 @@ import dlt
 import requests
 
 from edgerunner.sheets import write_records_to_sheet
-from edgerunner.task_config import load_task_settings, parse_task_args
+from edgerunner.task_config import TaskSettings, run_task
 
 
-def fetch_posts(settings) -> list[dict[str, Any]]:
+def fetch_posts(settings: TaskSettings) -> list[dict[str, Any]]:
     response = requests.get(
         settings["api_endpoint"],
         headers={"Accept": "application/json"},
@@ -32,7 +32,7 @@ def transform_posts(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def load_with_dlt(settings, records: list[dict[str, Any]]) -> str:
+def load_with_dlt(settings: TaskSettings, records: list[dict[str, Any]]) -> str:
     @dlt.resource(
         name=settings["dlt_table_name"],
         write_disposition=settings.get("dlt_write_disposition", "replace"),
@@ -48,14 +48,11 @@ def load_with_dlt(settings, records: list[dict[str, Any]]) -> str:
     return str(pipeline.run(posts_resource()))
 
 
-def main() -> None:
-    args = parse_task_args("Load JSONPlaceholder posts.")
-    settings = load_task_settings(args.task_name)
-
+def run(settings: TaskSettings) -> dict[str, Any]:
     records = transform_posts(fetch_posts(settings))
     load_info = load_with_dlt(settings, records)
 
-    if not args.skip_sheet:
+    if not settings.skip_sheet:
         write_records_to_sheet(
             spreadsheet_id=settings.sheet_id,
             tab_name=settings.tab_name,
@@ -63,14 +60,16 @@ def main() -> None:
             write_mode=settings.get("sheet_write_mode", "replace"),
         )
 
-    print(
-        {
-            "task": settings.name,
-            "record_count": len(records),
-            "wrote_sheet": not args.skip_sheet,
-            "load_info": load_info,
-        }
-    )
+    return {
+        "task": settings.name,
+        "record_count": len(records),
+        "wrote_sheet": not settings.skip_sheet,
+        "load_info": load_info,
+    }
+
+
+def main() -> None:
+    run_task(run)
 
 
 if __name__ == "__main__":
