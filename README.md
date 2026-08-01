@@ -10,9 +10,9 @@ want to edit or regenerate workflows from your machine.
 
 ## Project Shape
 
-- `tasks/_template.py`: starting point to copy when adding a task.
-- `tasks/jsonplaceholder_posts.py`: complete example task for a public posts API.
-- `tasks/github_cpython_repo.py`: complete example task for GitHub's public API.
+- `tasks/demo/_template.py`: starting point to copy when adding a task.
+- `tasks/demo/jsonplaceholder_posts.py`: complete example task for a public posts API.
+- `tasks/demo/github_cpython_repo.py`: complete example task for GitHub's public API.
 - `config/tasks.toml`: task metadata such as script path, cron, sheet id, and tab.
 - `src/edgerunner/sheets.py`: small shared helper for writing records to Sheets.
 - `src/edgerunner/secrets.py`: small shared helper for Secret Manager.
@@ -74,15 +74,15 @@ python3.11 -m venv .venv
 Run one task locally only if you want a quick manual check:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\github_cpython_repo.py --task-name github_cpython_repo --skip-sheet
-.\.venv\Scripts\python.exe tasks\github_cpython_repo.py --github_cpython_repo --skip-sheet
+.\.venv\Scripts\python.exe tasks\demo\github_cpython_repo.py --task-name github_cpython_repo --skip-sheet
+.\.venv\Scripts\python.exe tasks\demo\github_cpython_repo.py --github_cpython_repo --skip-sheet
 ```
 
 macOS equivalent:
 
 ```bash
-./.venv/bin/python tasks/github_cpython_repo.py --task-name github_cpython_repo --skip-sheet
-./.venv/bin/python tasks/github_cpython_repo.py --github_cpython_repo --skip-sheet
+./.venv/bin/python tasks/demo/github_cpython_repo.py --task-name github_cpython_repo --skip-sheet
+./.venv/bin/python tasks/demo/github_cpython_repo.py --github_cpython_repo --skip-sheet
 ```
 
 Run the automated unit tests:
@@ -104,12 +104,14 @@ merging.
 
 ## Adding A Task
 
-1. Copy `tasks/_template.py` to your own script, for example `tasks/my_job.py`.
+1. Copy `tasks/demo/_template.py` to your own client folder, for example
+   `tasks/my_client/my_job.py`.
    The template carries the standard `main()` shape, the settings access
    patterns, and the TOML entry that matches it.
 
 ```powershell
-Copy-Item tasks\_template.py tasks\my_job.py
+New-Item -ItemType Directory -Force tasks\my_client
+Copy-Item tasks\demo\_template.py tasks\my_client\my_job.py
 ```
 
 2. Add one entry to `config/tasks.toml`:
@@ -117,7 +119,7 @@ Copy-Item tasks\_template.py tasks\my_job.py
 ```toml
 [[tasks]]
 name = "my_job"
-script_path = "tasks/my_job.py"
+script_path = "tasks/my_client/my_job.py"
 cron_setting = "12 4 * * *"
 sheet_id = "YOUR_GOOGLE_SHEET_ID"
 tab_name = "my_job"
@@ -132,6 +134,11 @@ api_timeout_seconds = 30
 .\.venv\Scripts\python.exe scripts\generate_workflows.py
 ```
 
+Generated workflows stay in `.github/workflows`, because GitHub Actions only
+loads workflow files from that directory's first level. The generator prefixes
+workflow filenames with the client folder, so `tasks/demo/google_sheet_to_sheet.py`
+generates `.github/workflows/demo__google_sheet_to_sheet.yml`.
+
 Enable the repo hook once so commits that include `config/tasks.toml`
 automatically regenerate and stage workflow files:
 
@@ -142,14 +149,14 @@ git config core.hooksPath .githooks
 The generated workflow runs:
 
 ```text
-python tasks/my_job.py --task-name my_job
+python tasks/my_client/my_job.py --task-name my_job
 ```
 
 For local command-line use, every task script also accepts the shorthand
 `--my_job` form:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\my_job.py --my_job
+.\.venv\Scripts\python.exe tasks\my_client\my_job.py --my_job
 ```
 
 So the script owns its arguments, API calls, transforms, dlt pipeline, and side
@@ -236,7 +243,7 @@ For non-date fields, add a `manual_overrides` list to a task:
 ```toml
 [[tasks]]
 name = "api_with_dates"
-script_path = "tasks/api_with_dates.py"
+script_path = "tasks/my_client/api_with_dates.py"
 cron_setting = "0 12 * * *"
 sheet_id = "YOUR_GOOGLE_SHEET_ID"
 tab_name = "api_with_dates"
@@ -256,7 +263,7 @@ and leave the rest at their defaults.
 For local testing, pass the same values with `--override`:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\api_with_dates.py --api_with_dates --override startdate=2026-08-01 --override enddate=2026-08-15
+.\.venv\Scripts\python.exe tasks\my_client\api_with_dates.py --api_with_dates --override startdate=2026-08-01 --override enddate=2026-08-15
 ```
 
 ## Google Sheets
@@ -285,7 +292,7 @@ workflows install it through `python -m pip install -e .`.
 
 ### Sheet To Sheet Task
 
-`tasks/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
+`tasks/demo/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
 Google Sheet tab. It reads columns A:F, treats the first source row as the header
 row, filters records whose column A date is between 5 days ago and yesterday,
 then writes the filtered pandas DataFrame to the target tab.
@@ -295,7 +302,7 @@ Update this entry in `config/tasks.toml` before running it:
 ```toml
 [[tasks]]
 name = "google_sheet_to_sheet"
-script_path = "tasks/google_sheet_to_sheet.py"
+script_path = "tasks/demo/google_sheet_to_sheet.py"
 cron_setting = "40 16 * * *"
 sheet_id = "TARGET_GOOGLE_SHEET_ID"
 tab_name = "target_tab"
@@ -316,13 +323,13 @@ manual_overrides = [
 Run it locally without writing the target Sheet:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\google_sheet_to_sheet.py --google_sheet_to_sheet --skip-sheet
+.\.venv\Scripts\python.exe tasks\demo\google_sheet_to_sheet.py --google_sheet_to_sheet --skip-sheet
 ```
 
 Run it locally and write the target Sheet:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\google_sheet_to_sheet.py --google_sheet_to_sheet
+.\.venv\Scripts\python.exe tasks\demo\google_sheet_to_sheet.py --google_sheet_to_sheet
 ```
 
 This task uses the GitHub Actions service account from the `GCP_SERVICE_ACCOUNT`

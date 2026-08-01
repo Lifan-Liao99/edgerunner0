@@ -9,7 +9,7 @@
 
 [[tasks]]
 name = "jsonplaceholder_posts"
-script_path = "tasks/jsonplaceholder_posts.py"
+script_path = "tasks/demo/jsonplaceholder_posts.py"
 cron_setting = "28 16 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "jsonplaceholder_posts"
@@ -25,7 +25,7 @@ sheet_write_mode = "replace"
 
 [[tasks]]
 name = "github_cpython_repo"
-script_path = "tasks/github_cpython_repo.py"
+script_path = "tasks/demo/github_cpython_repo.py"
 cron_setting = "32 16 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "github_cpython_repo"
@@ -40,7 +40,7 @@ sheet_write_mode = "replace"
 
 [[tasks]]
 name = "github_cpython_repo_2"
-script_path = "tasks/github_cpython_repo.py"
+script_path = "tasks/demo/github_cpython_repo.py"
 cron_setting = "36 16 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "github_cpython_repo_2"
@@ -55,7 +55,7 @@ sheet_write_mode = "replace"
 
 [[tasks]]
 name = "google_sheet_to_sheet"
-script_path = "tasks/google_sheet_to_sheet.py"
+script_path = "tasks/demo/google_sheet_to_sheet.py"
 cron_setting = "3 */2 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "target_tab"

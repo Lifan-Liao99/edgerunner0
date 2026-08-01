@@ -1,4 +1,4 @@
-"""Minimal task template. Copy this file to `tasks/my_job.py`.
+"""Minimal task template. Copy this file to `tasks/<client>/my_job.py`.
 
 After copying:
 
@@ -10,7 +10,7 @@ Example TOML:
 
     [[tasks]]
     name = "my_job"
-    script_path = "tasks/my_job.py"
+    script_path = "tasks/<client>/my_job.py"
     cron_setting = "0 5 * * *"
     sheet_id = "YOUR_GOOGLE_SHEET_ID"
     tab_name = "my_job"
@@ -29,7 +29,7 @@ Example TOML:
 
 Local check without writing to Sheets:
 
-    python tasks/my_job.py --task-name my_job --skip-sheet
+    python tasks/<client>/my_job.py --task-name my_job --skip-sheet
 """
 
 from __future__ import annotations
