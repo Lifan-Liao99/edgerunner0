@@ -211,6 +211,8 @@ end_date_offset = -1
 sheet_write_mode = "replace"
 manual_overrides = [
   { name = "source_range", path = "source_range", description = "A1 range to copy, for example source_tab!A:F" },
+  { name = "startdate", path = "start_date_offset", description = "Start date, YYYY-MM-DD. Converted to start_date_offset using New York time." },
+  { name = "enddate", path = "end_date_offset", description = "End date, YYYY-MM-DD. Converted to end_date_offset using New York time." },
 ]
 ```
 
