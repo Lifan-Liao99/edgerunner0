@@ -60,6 +60,7 @@ def run(settings: TaskSettings) -> dict[str, Any]:
             tab_name=settings.tab_name,
             records=filtered_dataframe,
             write_mode=settings.get("sheet_write_mode", "replace"),
+            upsert_key_columns=settings.get("sheet_upsert_key_columns"),
         )
 
     return {

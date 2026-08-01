@@ -294,6 +294,18 @@ GCP IAM role.
 DataFrame. Pandas is part of the default project dependencies, so generated
 workflows install it through `python -m pip install -e .`.
 
+Supported `sheet_write_mode` values:
+
+```text
+replace  Clear the target tab, then write all rows.
+append   Append new rows, skipping the incoming header if the target already has one.
+upsert   Delete target rows whose key column exists in the incoming data, then append.
+```
+
+For `upsert`, pass `sheet_upsert_key_columns` in TOML and forward it to
+`write_records_to_sheet(..., upsert_key_columns=...)`. A single-column key can
+be `["date"]`; a composite key can be `["date", "store_id"]`.
+
 ### Sheet To Sheet Task
 
 `tasks/shared/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
@@ -316,7 +328,8 @@ source_tab_name = "source_tab"
 source_range = "source_tab!A:F"
 start_date_offset = -5
 end_date_offset = -1
-sheet_write_mode = "replace"
+sheet_write_mode = "upsert"
+sheet_upsert_key_columns = ["date"]
 manual_overrides = [
   { name = "source_range", path = "source_range", description = "A1 range to copy, for example source_tab!A:F" },
   { name = "startdate", path = "start_date_offset", description = "Start date, YYYY-MM-DD. Converted to start_date_offset using New York time." },

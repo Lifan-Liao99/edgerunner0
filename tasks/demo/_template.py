@@ -19,6 +19,9 @@ Example TOML:
     api_query = { limit = 100 }
     api_timeout_seconds = 30
     sheet_write_mode = "replace"
+    # For sheet_write_mode = "upsert", also set:
+    # sheet_upsert_key_columns = ["date"]
+    # Composite keys are supported, for example ["date", "store_id"].
     start_date_offset = -30
     end_date_offset = -1
     manual_overrides = [
@@ -92,6 +95,7 @@ def run(settings: TaskSettings) -> dict[str, Any]:
     #             tab_name=settings.tab_name,
     #             records=records,  # Also accepts a pandas DataFrame.
     #             write_mode=settings.get("sheet_write_mode", "replace"),
+    #             upsert_key_columns=settings.get("sheet_upsert_key_columns"),
     #         )
     #
     # Keys become column headers. Nested dicts are flattened by the Sheets helper;

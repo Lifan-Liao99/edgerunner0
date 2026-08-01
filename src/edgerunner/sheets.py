@@ -28,6 +28,7 @@ def write_records_to_sheet(
     tab_name: str,
     records: list[dict[str, Any]] | Any,
     write_mode: str = "replace",
+    upsert_key_columns: list[str] | tuple[str, ...] | None = None,
 ) -> None:
     service = _build_sheets_service()
 
@@ -49,11 +50,37 @@ def write_records_to_sheet(
             ).execute()
         return
 
-    if not values:
+    if write_mode == "append":
+        _append_values(
+            service=service,
+            spreadsheet_id=spreadsheet_id,
+            tab_name=tab_name,
+            values=values,
+        )
         return
 
-    if write_mode != "append":
-        raise ValueError("write_mode must be either 'replace' or 'append'")
+    if write_mode == "upsert":
+        _upsert_values(
+            service=service,
+            spreadsheet_id=spreadsheet_id,
+            tab_name=tab_name,
+            values=values,
+            upsert_key_columns=upsert_key_columns,
+        )
+        return
+
+    raise ValueError("write_mode must be one of 'replace', 'append', or 'upsert'")
+
+
+def _append_values(
+    *,
+    service: Any,
+    spreadsheet_id: str,
+    tab_name: str,
+    values: list[list[Any]],
+) -> None:
+    if not values:
+        return
 
     existing_header = service.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id,
@@ -63,6 +90,7 @@ def write_records_to_sheet(
     if not rows_to_append:
         return
 
+    target_range = f"{tab_name}!A1"
     service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
         range=target_range,
@@ -70,6 +98,157 @@ def write_records_to_sheet(
         insertDataOption="INSERT_ROWS",
         body={"values": rows_to_append},
     ).execute()
+
+
+def _upsert_values(
+    *,
+    service: Any,
+    spreadsheet_id: str,
+    tab_name: str,
+    values: list[list[Any]],
+    upsert_key_columns: list[str] | tuple[str, ...] | None = None,
+) -> None:
+    key_columns = _normalize_upsert_key_columns(upsert_key_columns)
+    if not values:
+        return
+
+    incoming_header = [str(header).strip() for header in values[0]]
+    incoming_key_indexes = [_column_index(incoming_header, column) for column in key_columns]
+    incoming_keys = {
+        key for row in values[1:] if (key := _row_key(row, incoming_key_indexes)) is not None
+    }
+    if not incoming_keys:
+        return
+
+    existing_values = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=tab_name,
+    ).execute().get("values", [])
+
+    if not existing_values:
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{tab_name}!A1",
+            valueInputOption="RAW",
+            body={"values": values},
+        ).execute()
+        return
+
+    existing_header = [str(header).strip() for header in existing_values[0]]
+    existing_key_indexes = [_column_index(existing_header, column) for column in key_columns]
+    row_numbers_to_delete = [
+        row_number
+        for row_number, row in enumerate(existing_values[1:], start=2)
+        if (key := _row_key(row, existing_key_indexes)) is not None and key in incoming_keys
+    ]
+    if row_numbers_to_delete:
+        _delete_sheet_rows(
+            service=service,
+            spreadsheet_id=spreadsheet_id,
+            tab_name=tab_name,
+            row_numbers=row_numbers_to_delete,
+        )
+
+    rows_to_append = values[1:]
+    if not rows_to_append:
+        return
+
+    service.spreadsheets().values().append(
+        spreadsheetId=spreadsheet_id,
+        range=f"{tab_name}!A1",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        body={"values": rows_to_append},
+    ).execute()
+
+
+def _delete_sheet_rows(
+    *,
+    service: Any,
+    spreadsheet_id: str,
+    tab_name: str,
+    row_numbers: list[int],
+) -> None:
+    sheet_id = _sheet_id_for_tab(service, spreadsheet_id, tab_name)
+    requests = [
+        {
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": start_row - 1,
+                    "endIndex": end_row,
+                }
+            }
+        }
+        for start_row, end_row in _contiguous_ranges(sorted(row_numbers, reverse=True))
+    ]
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": requests},
+    ).execute()
+
+
+def _sheet_id_for_tab(service: Any, spreadsheet_id: str, tab_name: str) -> int:
+    spreadsheet = service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="sheets(properties(sheetId,title))",
+    ).execute()
+    for sheet in spreadsheet.get("sheets", []):
+        properties = sheet.get("properties", {})
+        if properties.get("title") == tab_name:
+            return int(properties["sheetId"])
+    raise ValueError(f"Tab '{tab_name}' was not found in spreadsheet {spreadsheet_id}")
+
+
+def _contiguous_ranges(descending_row_numbers: list[int]) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    if not descending_row_numbers:
+        return ranges
+
+    start = descending_row_numbers[0]
+    end = descending_row_numbers[0]
+    for row_number in descending_row_numbers[1:]:
+        if row_number == end - 1:
+            end = row_number
+            continue
+        ranges.append((end, start))
+        start = row_number
+        end = row_number
+    ranges.append((end, start))
+    return ranges
+
+
+def _column_index(headers: list[str], column_name: str) -> int:
+    normalized_column_name = column_name.strip()
+    for index, header in enumerate(headers):
+        if header == normalized_column_name:
+            return index
+    raise ValueError(f"Column '{column_name}' was not found in sheet headers: {headers}")
+
+
+def _normalize_upsert_key_columns(
+    upsert_key_columns: list[str] | tuple[str, ...] | None,
+) -> list[str]:
+    if not upsert_key_columns:
+        raise ValueError("upsert_key_columns is required when write_mode is 'upsert'")
+
+    raw_columns = [str(column).strip() for column in upsert_key_columns]
+    columns = [column for column in raw_columns if column]
+    if not columns:
+        raise ValueError("upsert key columns cannot be empty")
+    if len(columns) != len(set(columns)):
+        raise ValueError(f"upsert key columns cannot contain duplicates: {columns}")
+    return columns
+
+
+def _row_key(row: list[Any], key_indexes: list[int]) -> tuple[str, ...] | None:
+    key = tuple(_key_value(row[index]) if index < len(row) else "" for index in key_indexes)
+    return key if all(key) else None
+
+
+def _key_value(value: Any) -> str:
+    return str(value).strip()
 
 
 def read_records_from_sheet(
