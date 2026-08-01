@@ -57,6 +57,7 @@ def workflow_yaml(task: TaskSettings) -> str:
     job_name = f"run-{task.name}".replace("_", "-")
     workflow_dispatch_inputs = workflow_dispatch_inputs_yaml(task)
     run_step = run_step_yaml(task)
+    alert_step = alert_step_yaml(task)
     auth_step = ""
     if task.gcp_auth:
         auth_step = f"""
@@ -109,6 +110,8 @@ jobs:
             dlt-${{{{ runner.os }}}}-{task.name}-
 
 {run_step}
+
+{alert_step}
 """
 
 
@@ -131,16 +134,122 @@ def workflow_dispatch_inputs_yaml(task: TaskSettings) -> str:
 
 
 def run_step_yaml(task: TaskSettings) -> str:
-    lines = [f"      - name: Run {task.name}"]
+    lines = [
+        f"      - name: Run {task.name}",
+        "        id: run_task",
+        "        shell: bash",
+        "        env:",
+        "          TASK_LOG: task.log",
+    ]
     overrides = task.manual_overrides
     if overrides:
-        lines.append("        env:")
         for override in overrides:
             env_var = override_env_var(override["name"])
             input_name = override["name"]
             lines.append(f"          {env_var}: ${{{{ github.event.inputs.{input_name} || '' }}}}")
-    lines.append(f"        run: python {task.script_path} --task-name {task.name}")
+    lines.extend(
+        [
+            "        run: |",
+            "          set +e",
+            f"          python {task.script_path} --task-name {task.name} 2>&1 | tee \"$TASK_LOG\"",
+            "          status=${PIPESTATUS[0]}",
+            '          echo "exit_code=$status" >> "$GITHUB_OUTPUT"',
+            '          exit "$status"',
+        ]
+    )
     return "\n".join(lines)
+
+
+def alert_step_yaml(task: TaskSettings) -> str:
+    return """      - name: Send Slack alert
+        if: always()
+        shell: bash
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TASK_NAME: __TASK_NAME__
+          TASK_OUTCOME: ${{ steps.run_task.outcome || 'not_run' }}
+          TASK_EXIT_CODE: ${{ steps.run_task.outputs.exit_code || 'unknown' }}
+          JOB_STATUS: ${{ job.status }}
+          TASK_LOG: task.log
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is empty; skipping Slack alert."
+            exit 0
+          fi
+
+          set +e
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          task_name = os.environ["TASK_NAME"]
+          job_status = os.environ.get("JOB_STATUS", "unknown")
+          task_outcome = os.environ.get("TASK_OUTCOME", "unknown")
+          exit_code = os.environ.get("TASK_EXIT_CODE", "unknown")
+          run_url = os.environ["RUN_URL"]
+          repository = os.environ.get("REPOSITORY", "unknown")
+          workflow_name = os.environ.get("WORKFLOW_NAME", "unknown")
+          branch_name = os.environ.get("BRANCH_NAME", "unknown")
+          trigger = os.environ.get("TRIGGER", "unknown")
+          finished_at = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S %Z")
+          task_log_path = Path(os.environ.get("TASK_LOG", "task.log"))
+
+          is_success = job_status == "success" and task_outcome == "success"
+          if is_success:
+              status = "success"
+              reason = "task completed successfully"
+              error_message = ""
+          else:
+              if task_log_path.exists():
+                  log_lines = task_log_path.read_text(errors="replace").splitlines()
+                  error_message = "\\n".join(log_lines[-80:]).strip() or "(task log was empty)"
+              else:
+                  error_message = "(task step did not produce a log; check the GitHub Actions run)"
+              if len(error_message) > 3000:
+                  error_message = error_message[-3000:]
+
+              if task_outcome == "failure":
+                  reason = f"task exited with code `{exit_code}`"
+              elif task_outcome == "skipped":
+                  reason = "task step was skipped, likely because an earlier workflow step failed"
+              else:
+                  reason = f"workflow ended with job status `{job_status}` and task outcome `{task_outcome}`"
+
+              status = "failure"
+
+          payload = {
+              "task_name": task_name,
+              "task_status": status,
+              "finished_at": finished_at,
+              "reason": reason,
+              "error_log": error_message,
+              "job_status": job_status,
+              "task_outcome": task_outcome,
+              "exit_code": exit_code,
+              "run_url": run_url,
+              "repository": repository,
+              "workflow_name": workflow_name,
+              "branch_name": branch_name,
+              "trigger": trigger,
+          }
+          Path("slack_payload.json").write_text(json.dumps(payload), encoding="utf-8")
+          PY
+          payload_status=$?
+          if [ "$payload_status" -ne 0 ]; then
+            echo "Slack alert payload generation failed; skipping Slack alert."
+            exit 0
+          fi
+
+          curl -fsS -X POST -H "Content-type: application/json" --data @slack_payload.json "$SLACK_WEBHOOK_URL" || echo "Slack alert failed to send."
+""".replace("__TASK_NAME__", _yaml_string(task.name))
 
 
 def _yaml_string(value: str) -> str:
@@ -160,7 +269,7 @@ def main() -> None:
 
     for task in tasks.values():
         workflow_path = WORKFLOW_DIR / f"{task.name}.yml"
-        workflow_path.write_text(workflow_yaml(task), encoding="utf-8", newline="\n")
+        workflow_path.write_text(workflow_yaml(task).rstrip() + "\n", encoding="utf-8", newline="\n")
         print(f"Wrote {workflow_path.relative_to(ROOT)}")
 
 

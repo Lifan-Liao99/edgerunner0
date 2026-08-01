@@ -85,6 +85,23 @@ macOS equivalent:
 ./.venv/bin/python tasks/github_cpython_repo.py --github_cpython_repo --skip-sheet
 ```
 
+Run the automated unit tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+macOS equivalent:
+
+```bash
+./.venv/bin/python -m unittest discover -s tests -v
+```
+
+The `.github/workflows/unit_tests.yml` workflow runs the same test command on
+every push and pull request. To make failed tests block merges, enable a branch
+protection rule in GitHub and require the `unit-tests` status check before
+merging.
+
 ## Adding A Task
 
 1. Copy `tasks/_template.py` to your own script, for example `tasks/my_job.py`.
@@ -332,6 +349,35 @@ GCP_SERVICE_ACCOUNT=YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
 
 Each generated workflow has exactly one job and can be run manually with
 `workflow_dispatch`; the cron runs on the default branch in UTC.
+
+## Slack Alerts
+
+Generated task workflows call a Slack Workflow Builder webhook after each run
+when the `SLACK_WEBHOOK_URL` GitHub repository secret is set. If the secret is
+missing or empty, the alert step prints a skip message and exits successfully.
+
+In Slack Workflow Builder, create webhook variables with these names:
+
+```text
+task_name
+task_status
+finished_at
+reason
+error_log
+job_status
+task_outcome
+exit_code
+run_url
+repository
+workflow_name
+branch_name
+trigger
+```
+
+The GitHub workflow posts those variables as a JSON payload. Slack owns the
+message shape, so you can build the success/failure wording in Slack using the
+variables above. `error_log` contains the last 80 task log lines on failure and
+is empty on success.
 
 ## WIF Setup Reference
 
