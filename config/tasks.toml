@@ -1,3 +1,29 @@
+# Default task config template:
+#
+# [[tasks]]
+# name = "my_task_name"                         # Framework config: unique task name.
+# script_path = "tasks/shared/my_task.py"       # Framework config: Python task script.
+# cron_setting = "0 14 * * *"                  # Framework config: GitHub Actions cron in UTC.
+# gcp_auth = true                              # Framework config: enable GCP auth in workflow.
+#
+# Optional date-window defaults. Ignore these if your task does not need dates.
+# The framework interprets offsets from today's date in New York time.
+# start_date_offset = -30
+# end_date_offset = -1
+#
+# Optional manual run inputs. Add these when you want workflow_dispatch overrides.
+# startdate/enddate are framework-defined input names that get converted into
+# start_date_offset/end_date_offset in New York time before your script runs.
+# manual_overrides = [
+#     { name = "startdate", path = "start_date_offset", description = "Start date, YYYY-MM-DD. Converted to start_date_offset using New York time." },
+#     { name = "enddate", path = "end_date_offset", description = "End date, YYYY-MM-DD. Converted to end_date_offset using New York time." },
+# ]
+#
+# Add any extra config your script needs below these framework fields, for example:
+# sheet_id = "..."
+# tab_name = "..."
+# sheet_write_mode = "replace"
+#
 # This file only controls workflow generation. Each task's actual behavior lives
 # in its Python script under tasks/.
 #
