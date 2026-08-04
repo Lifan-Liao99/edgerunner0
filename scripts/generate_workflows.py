@@ -46,8 +46,6 @@ def validate_task(task: TaskSettings) -> None:
     if not (ROOT / task.script_path).is_file():
         raise ValueError(f"Task script does not exist: {task.script_path}")
     workflow_stem(task)
-    if not task.cron_setting.strip():
-        raise ValueError(f"Task '{task.name}' is missing cron_setting")
     if not task.sheet_id.strip():
         raise ValueError(f"Task '{task.name}' is missing sheet_id")
     if not task.tab_name.strip():
@@ -59,6 +57,7 @@ def workflow_yaml(task: TaskSettings) -> str:
     display_name = workflow_display_name(task)
     job_name = f"run-{re.sub(r'[^A-Za-z0-9]+', '-', workflow_stem(task)).strip('-')}"
     workflow_dispatch_inputs = workflow_dispatch_inputs_yaml(task)
+    schedule_yaml = schedule_trigger_yaml(task)
     run_step = run_step_yaml(task)
     alert_step = alert_step_yaml(task)
     auth_step = ""
@@ -75,9 +74,7 @@ def workflow_yaml(task: TaskSettings) -> str:
 name: {_yaml_string(display_name)}
 
 on:
-  workflow_dispatch:{workflow_dispatch_inputs}
-  schedule:
-    - cron: "{task.cron_setting}"
+  workflow_dispatch:{workflow_dispatch_inputs}{schedule_yaml}
 
 permissions:
   contents: read
@@ -134,6 +131,13 @@ def workflow_dispatch_inputs_yaml(task: TaskSettings) -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def schedule_trigger_yaml(task: TaskSettings) -> str:
+    cron_setting = task.cron_setting.strip()
+    if not cron_setting:
+        return ""
+    return f'\n  schedule:\n    - cron: "{cron_setting}"'
 
 
 def run_step_yaml(task: TaskSettings) -> str:

@@ -91,6 +91,20 @@ class TaskConfigTests(LoggedTestCase):
         self.assertEqual(settings["start_date_offset"], -5)
         self.assertEqual(settings["end_date_offset"], -1)
 
+    def test_cron_setting_is_optional_for_manual_only_tasks(self) -> None:
+        # Test: a task can omit cron_setting when it should only run manually.
+        # Expected: settings.cron_setting returns an empty string instead of raising.
+        settings = TaskSettings(
+            {
+                "name": "manual_only_task",
+                "script_path": "tasks/manual_only_task.py",
+                "sheet_id": "sheet123",
+                "tab_name": "output",
+            }
+        )
+
+        self.assertEqual(settings.cron_setting, "")
+
     def test_load_all_task_settings_rejects_duplicate_names(self) -> None:
         # Test: task names are unique identifiers in tasks.toml.
         # Expected: duplicate names raise a clear ValueError instead of overwriting silently.

@@ -56,7 +56,7 @@ class TaskSettings:
 
     @property
     def cron_setting(self) -> str:
-        return str(self.params["cron_setting"])
+        return str(self.params.get("cron_setting", ""))
 
     @property
     def sheet_id(self) -> str:

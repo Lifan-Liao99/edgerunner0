@@ -3,7 +3,7 @@
 # [[tasks]]
 # name = "my_task_name"                         # Framework config: unique task name.
 # script_path = "tasks/shared/my_task.py"       # Framework config: Python task script.
-# cron_setting = "0 14 * * *"                  # Framework config: GitHub Actions cron in UTC.
+# cron_setting = "0 14 * * *"                  # Optional: GitHub Actions cron in UTC.
 # gcp_auth = true                              # Framework config: enable GCP auth in workflow.
 #
 # Optional date-window defaults. Ignore these if your task does not need dates.
@@ -90,6 +90,25 @@ source_sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 source_tab_name = "source_tab"
 source_range = "source_tab!A:F"
 start_date_offset = -10
+end_date_offset = -1
+sheet_write_mode = "upsert"
+sheet_upsert_key_columns = ["date"]
+manual_overrides = [
+    { name = "source_range", path = "source_range", description = "A1 range to copy, for example source_tab!A:F" },
+    { name = "startdate", path = "start_date_offset", description = "Start date, YYYY-MM-DD. Converted to start_date_offset using New York time." },
+    { name = "enddate", path = "end_date_offset", description = "End date, YYYY-MM-DD. Converted to end_date_offset using New York time." },
+]
+
+[[tasks]]
+name = "composed_google_sheet_to_sheet"
+script_path = "tasks/demo/composed_google_sheet_to_sheet.py"
+sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
+tab_name = "composed_target_tab"
+gcp_auth = true
+source_sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
+source_tab_name = "source_tab"
+source_range = "source_tab!A:F"
+start_date_offset = -5
 end_date_offset = -1
 sheet_write_mode = "upsert"
 sheet_upsert_key_columns = ["date"]

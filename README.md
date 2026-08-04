@@ -140,6 +140,9 @@ loads workflow files from that directory's first level. The generator prefixes
 workflow filenames with the folder under `tasks`, so `tasks/demo/my_job.py`
 generates `.github/workflows/demo__my_job.yml`.
 
+Use `cron_setting` when the task should run on a schedule. Leave it out when the
+task should only run manually through `workflow_dispatch`.
+
 Use `tasks/shared` for reusable tasks that are not tied to one client. Client
 specific scripts can live in folders such as `tasks/bestbuy` or `tasks/petco`.
 
@@ -372,7 +375,8 @@ GCP_SERVICE_ACCOUNT=YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
 Each generated workflow has exactly one job and can be run manually with
-`workflow_dispatch`; the cron runs on the default branch in UTC.
+`workflow_dispatch`. When `cron_setting` is present, the cron runs on the
+default branch in UTC.
 
 ## Slack Alerts
 
