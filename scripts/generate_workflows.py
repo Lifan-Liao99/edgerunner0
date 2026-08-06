@@ -46,10 +46,6 @@ def validate_task(task: TaskSettings) -> None:
     if not (ROOT / task.script_path).is_file():
         raise ValueError(f"Task script does not exist: {task.script_path}")
     workflow_stem(task)
-    if not task.sheet_id.strip():
-        raise ValueError(f"Task '{task.name}' is missing sheet_id")
-    if not task.tab_name.strip():
-        raise ValueError(f"Task '{task.name}' is missing tab_name")
     task.manual_overrides
 
 

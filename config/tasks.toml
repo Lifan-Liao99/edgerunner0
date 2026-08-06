@@ -20,6 +20,7 @@
 # ]
 #
 # Add any extra config your script needs below these framework fields, for example:
+# Include sheet_id/tab_name only when your task uses Google Sheets.
 # sheet_id = "..."
 # tab_name = "..."
 # sheet_write_mode = "replace"

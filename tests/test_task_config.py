@@ -105,6 +105,19 @@ class TaskConfigTests(LoggedTestCase):
 
         self.assertEqual(settings.cron_setting, "")
 
+    def test_sheet_fields_are_optional_for_non_sheet_tasks(self) -> None:
+        # Test: tasks that do not read or write Sheets do not need Sheet config.
+        # Expected: convenience properties return empty strings instead of raising.
+        settings = TaskSettings(
+            {
+                "name": "api_only_task",
+                "script_path": "tasks/api_only_task.py",
+            }
+        )
+
+        self.assertEqual(settings.sheet_id, "")
+        self.assertEqual(settings.tab_name, "")
+
     def test_load_all_task_settings_rejects_duplicate_names(self) -> None:
         # Test: task names are unique identifiers in tasks.toml.
         # Expected: duplicate names raise a clear ValueError instead of overwriting silently.

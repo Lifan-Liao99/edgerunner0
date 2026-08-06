@@ -105,94 +105,65 @@ merging.
 
 ## Adding A Task
 
-1. Copy `tasks/demo/_template.py` to your own client folder, for example
-   `tasks/my_client/my_job.py`.
-   The template carries the standard `main()` shape, the settings access
-   patterns, and the TOML entry that matches it.
+A task is one automation job. It has two parts:
+
+- A Python script under `tasks/` that contains the actual logic.
+- One `[[tasks]]` entry in `config/tasks.toml` that tells the framework which
+  script to run, what default settings to pass in, and whether GitHub Actions
+  should schedule it.
+
+The Python script should focus on business logic: call an API, transform data,
+write a Google Sheet, call another task, or anything else you need. The TOML
+entry should hold configuration values that may change by environment, client,
+schedule, Sheet ID, API URL, date range, or manual override.
+
+### 1. Choose Where The Script Should Live
+
+Put reusable scripts in `tasks/shared`. Put client-specific scripts in their own
+folder, such as `tasks/bestbuy`, `tasks/petco`, or `tasks/my_client`.
+
+Example: create a new client folder and copy the starter template:
 
 ```powershell
 New-Item -ItemType Directory -Force tasks\my_client
 Copy-Item tasks\demo\_template.py tasks\my_client\my_job.py
 ```
 
-2. Add one entry to `config/tasks.toml`:
+Why this matters: the folder name becomes part of the generated workflow name.
+For example, `tasks/my_client/my_job.py` generates a workflow named
+`my_client / my_job`.
 
-```toml
-[[tasks]]
-name = "my_job"
-script_path = "tasks/my_client/my_job.py"
-cron_setting = "12 4 * * *"
-sheet_id = "YOUR_GOOGLE_SHEET_ID"
-tab_name = "my_job"
-gcp_auth = true
-api_endpoint = "https://api.example.com/data"
-api_timeout_seconds = 30
-```
+### 2. Write The Task Script
 
-3. Regenerate workflows:
+Every task script should expose a `run(settings)` function. The framework passes
+one `TaskSettings` object into that function.
 
-```powershell
-.\.venv\Scripts\python.exe scripts\generate_workflows.py
-```
-
-Generated workflows stay in `.github/workflows`, because GitHub Actions only
-loads workflow files from that directory's first level. The generator prefixes
-workflow filenames with the folder under `tasks`, so `tasks/demo/my_job.py`
-generates `.github/workflows/demo__my_job.yml`.
-
-Use `cron_setting` when the task should run on a schedule. Leave it out when the
-task should only run manually through `workflow_dispatch`.
-
-Use `tasks/shared` for reusable tasks that are not tied to one client. Client
-specific scripts can live in folders such as `tasks/bestbuy` or `tasks/petco`.
-
-Enable the repo hook once so commits that include `config/tasks.toml`
-automatically regenerate and stage workflow files:
-
-```powershell
-git config core.hooksPath .githooks
-```
-
-The generated workflow runs:
-
-```text
-python tasks/my_client/my_job.py --task-name my_job
-```
-
-For local command-line use, every task script also accepts the shorthand
-`--my_job` form:
-
-```powershell
-.\.venv\Scripts\python.exe tasks\my_client\my_job.py --my_job
-```
-
-So the script owns its arguments, API calls, transforms, dlt pipeline, and side
-effects.
-
-The same script can power multiple tasks. Add multiple TOML entries with
-different `name` values and the same `script_path`; the workflow passes the
-selected task name with `--task-name`, and the script loads that entry's
-parameters.
-
-Every key in a task's TOML entry is available to that Python script:
+Minimal example:
 
 ```python
+from __future__ import annotations
+
 from typing import Any
 
 from edgerunner.task_config import TaskSettings, run_task
 
 
 def run(settings: TaskSettings) -> dict[str, Any]:
+    # Read values from config/tasks.toml.
     endpoint = settings["api_endpoint"]
     timeout = settings.get("api_timeout_seconds", 30)
-    sheet_id = settings.sheet_id
-    tab_name = settings.tab_name
+
+    # Put your real automation logic here:
+    # - call an API
+    # - transform records
+    # - write to a Google Sheet
+    # - call another task's run(settings)
+    print(f"Would call {endpoint} with timeout={timeout}")
+
     return {
         "task": settings.name,
         "endpoint": endpoint,
         "timeout": timeout,
-        "sheet_id": sheet_id,
-        "tab_name": tab_name,
     }
 
 
@@ -204,12 +175,256 @@ if __name__ == "__main__":
     main()
 ```
 
+Why this shape matters:
+
+- `run(settings)` is the reusable business function. Other task scripts can
+  import it and call it directly.
+- `run_task(run)` is only the command-line wrapper. It loads TOML, applies manual
+  overrides, builds `TaskSettings`, and then calls `run(settings)`.
+
+### 3. Add The TOML Config
+
+Add one `[[tasks]]` entry to `config/tasks.toml`. The `name` must be unique.
+The `script_path` must point to the Python file you created.
+
+```toml
+[[tasks]]
+name = "my_job"
+script_path = "tasks/my_client/my_job.py"
+gcp_auth = true
+api_endpoint = "https://api.example.com/data"
+api_timeout_seconds = 30
+```
+
+Required fields:
+
+- `name`: the task ID. This is how the workflow tells the script which TOML
+  entry to load.
+- `script_path`: the Python script to run.
+
+Optional framework fields:
+
+- `cron_setting`: GitHub Actions cron in UTC. Add this only when the task should
+  run automatically.
+- `gcp_auth`: whether the generated workflow should authenticate to GCP.
+  Defaults to `true` when omitted.
+- `sheet_id`: the default Google Sheet ID. Add this when your script reads from
+  or writes to a Google Sheet.
+- `tab_name`: the default Sheet tab name. Add this when your script reads from
+  or writes to a Google Sheet.
+- `start_date_offset` and `end_date_offset`: optional date-window defaults.
+  Use these when the task needs a date range, such as today minus 30 days through
+  yesterday. Ignore them when the task does not need dates.
+- `manual_overrides`: optional manual-run inputs for GitHub Actions
+  `workflow_dispatch`. Use this when someone should be able to override selected
+  TOML values before manually running the workflow.
+
+Custom script fields:
+
+You can add any extra fields your script needs. The framework preserves them and
+passes them into `settings`.
+
+Examples:
+
+```toml
+api_endpoint = "https://api.example.com/data"
+api_timeout_seconds = 30
+api_query = { limit = 100, status = "active" }
+```
+
+For a Sheet-writing task, add Sheet config:
+
+```toml
+sheet_id = "YOUR_GOOGLE_SHEET_ID"
+tab_name = "my_job"
+sheet_write_mode = "upsert"
+sheet_upsert_key_columns = ["date", "store_id"]
+```
+
+These custom fields do not have special meaning to the framework unless a shared
+helper reads them. Your Python script decides what they mean.
+
+Every key in the TOML entry is available in Python:
+
+```python
+endpoint = settings["api_endpoint"]
+timeout = settings.get("api_timeout_seconds", 30)
+```
+
+For a non-Sheet task, you can omit `sheet_id` and `tab_name`; the convenience
+properties return empty strings.
+
+For a Sheet task, read them with the convenience properties:
+
+```python
+sheet_id = settings.sheet_id
+tab_name = settings.tab_name
+```
+
 Known fields such as `name`, `script_path`, `cron_setting`, `sheet_id`,
 `tab_name`, and `gcp_auth` have convenience properties. Custom fields are
 preserved in `settings.params` and can be accessed with `settings["key"]`.
-The shared `run_task()` wrapper handles CLI parsing, TOML loading, manual
-overrides, and printing the value returned by `run(settings)`. `--skip-sheet` is
-available to the task as `settings.skip_sheet`.
+
+### 4. Decide Whether It Should Run Automatically
+
+If the task should only run manually from GitHub Actions, do not add
+`cron_setting`.
+
+If the task should run on a schedule, add `cron_setting`:
+
+```toml
+cron_setting = "0 13,21 * * *"
+```
+
+GitHub Actions cron is always UTC. The example above runs at 13:00 UTC and
+21:00 UTC every day. During New York daylight time, that is 9:00 AM and 5:00 PM
+New York time.
+
+Why this matters: manual-only demo tasks should not have cron. Production
+automations that must run every day should have cron.
+
+### 5. Regenerate The GitHub Workflow
+
+After editing `config/tasks.toml`, regenerate workflow files:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_workflows.py
+```
+
+This creates or updates a file under `.github/workflows`. GitHub Actions only
+loads workflow files from that directory's first level. The generator prefixes
+workflow filenames with the folder under `tasks`, so:
+
+```text
+tasks/my_client/my_job.py
+```
+
+generates something like:
+
+```text
+.github/workflows/my_client__my_job.yml
+```
+
+The generated workflow runs this command in GitHub Actions:
+
+```text
+python tasks/my_client/my_job.py --task-name my_job
+```
+
+That is why `name` and `script_path` both matter: `script_path` selects the
+file, and `--task-name` selects the TOML entry.
+
+### 6. Enable The Local Git Hook
+
+Do this once per local clone:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+Why this matters: when you commit a change to `config/tasks.toml`, the hook
+automatically runs `scripts/generate_workflows.py` so the generated workflow
+stays in sync with the TOML.
+
+### 7. Test The Task Locally
+
+Run the task without writing to Google Sheets:
+
+```powershell
+.\.venv\Scripts\python.exe tasks\my_client\my_job.py --task-name my_job --skip-sheet
+```
+
+You can also use the shorthand task name:
+
+```powershell
+.\.venv\Scripts\python.exe tasks\my_client\my_job.py --my_job
+```
+
+Why this matters: local runs catch basic Python errors before you push. The
+`--skip-sheet` flag is available to the script as `settings.skip_sheet`, so Sheet
+writing tasks can safely test read/transform logic without changing a Sheet.
+
+### 8. Push To A Testing Branch And Run In GitHub Actions
+
+After local testing succeeds, create a testing branch. Use this naming pattern:
+
+```text
+testing-{description}
+```
+
+Example:
+
+```powershell
+git switch -c testing-my-job
+git add tasks\my_client\my_job.py config\tasks.toml .github\workflows\my_client__my_job.yml
+git commit -m "Add my_job automation task"
+git push -u origin testing-my-job
+```
+
+Why this matters: the first real GitHub Actions run should happen on your own
+testing branch, not directly on `main`. That lets you test credentials,
+workflow_dispatch inputs, Sheet permissions, API access, and logs before asking
+for review.
+
+Open the Actions tab in GitHub and select the generated workflow. Use the branch
+dropdown to choose your `testing-{description}` branch.
+
+For a manual-only task, choose the generated workflow and click **Run workflow**.
+For a scheduled task, GitHub runs it from the default branch according to
+`cron_setting`, but you should still manually run it once from your testing
+branch before merging.
+
+If the task uses GCP, make sure the repo has these GitHub secrets:
+
+```text
+GCP_WORKLOAD_IDENTITY_PROVIDER
+GCP_SERVICE_ACCOUNT
+```
+
+If the task writes to Google Sheets, share the Sheet with the service account
+email in `GCP_SERVICE_ACCOUNT`.
+
+When the action finishes, check:
+
+- The GitHub Actions run is green.
+- The task log shows the expected inputs, date range, row counts, or API result.
+- The target Google Sheet or downstream system has the expected output.
+- Manual overrides work if the task exposes workflow inputs.
+- Slack alerting is skipped cleanly when `SLACK_WEBHOOK_URL` is empty, or sends
+  the expected alert when configured.
+
+If something fails, update the same testing branch and rerun the workflow.
+
+After the GitHub Actions test succeeds, open a pull request from
+`testing-{description}` and ask for review. The PR should include the task
+script, the TOML entry, the generated workflow, and any README/test updates that
+belong with the task.
+
+### 9. Reuse Or Combine Tasks
+
+The same Python script can power multiple tasks. Add multiple TOML entries with
+different `name` values and the same `script_path`; the workflow passes the
+selected task name with `--task-name`, and the script loads that entry's
+parameters.
+
+One task can also call another task:
+
+```python
+from edgerunner.task_config import TaskSettings, run_task
+from tasks.shared.google_sheet_to_sheet import run as sheet_transfer
+
+
+def run(settings: TaskSettings):
+    transfer_result = sheet_transfer(settings)
+    print(f"Transferred {transfer_result['record_count']} rows")
+    return transfer_result
+
+
+if __name__ == "__main__":
+    run_task(run)
+```
+
+This works because every task uses the same `run(settings)` shape.
 
 ## Manual Workflow Overrides
 

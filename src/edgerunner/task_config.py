@@ -60,11 +60,11 @@ class TaskSettings:
 
     @property
     def sheet_id(self) -> str:
-        return str(self.params["sheet_id"])
+        return str(self.params.get("sheet_id", ""))
 
     @property
     def tab_name(self) -> str:
-        return str(self.params["tab_name"])
+        return str(self.params.get("tab_name", ""))
 
     @property
     def gcp_auth(self) -> bool:
