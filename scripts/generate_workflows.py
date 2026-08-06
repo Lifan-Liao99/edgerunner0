@@ -29,7 +29,6 @@ WORKFLOW_FILE_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 #   git ls-remote https://github.com/OWNER/REPO refs/tags/vN
 ACTION_CHECKOUT = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"  # v4.4.0
 ACTION_SETUP_PYTHON = "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"  # v5.6.0
-ACTION_CACHE = "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830"  # v4.3.0
 ACTION_GCP_AUTH = "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"  # v3.0.0
 
 
@@ -94,17 +93,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 {auth_step}
-      - name: Restore dlt state
-        uses: {ACTION_CACHE}
-        with:
-          path: |
-            .dlt
-            *.duckdb
-            *.duckdb.wal
-          key: dlt-${{{{ runner.os }}}}-{task.name}-${{{{ github.run_id }}}}
-          restore-keys: |
-            dlt-${{{{ runner.os }}}}-{task.name}-
-
 {run_step}
 
 {alert_step}
