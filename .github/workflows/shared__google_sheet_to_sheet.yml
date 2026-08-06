@@ -47,17 +47,6 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Restore dlt state
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            .dlt
-            *.duckdb
-            *.duckdb.wal
-          key: dlt-${{ runner.os }}-google_sheet_to_sheet-${{ github.run_id }}
-          restore-keys: |
-            dlt-${{ runner.os }}-google_sheet_to_sheet-
-
       - name: Run google_sheet_to_sheet
         id: run_task
         shell: bash
