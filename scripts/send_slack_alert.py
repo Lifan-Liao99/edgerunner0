@@ -12,8 +12,25 @@ from zoneinfo import ZoneInfo
 
 
 DEFAULT_TIMEZONE = "America/New_York"
-MAX_ERROR_LOG_CHARS = 3000
-MAX_ERROR_LOG_LINES = 80
+SENSITIVE_VALUE = "[REDACTED]"
+SENSITIVE_PATTERNS = [
+    (
+        r"(?i)(authorization\s*:\s*bearer\s+)[^\s,;]+",
+        rf"\1{SENSITIVE_VALUE}",
+    ),
+    (
+        r"(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|client[_-]?secret|secret)\s*[:=]\s*([^\s,;]+)",
+        rf"\1={SENSITIVE_VALUE}",
+    ),
+    (
+        r"(?i)([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|key|signature|sig|secret)=)[^&#\s]+",
+        rf"\1{SENSITIVE_VALUE}",
+    ),
+    (
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+        "[REDACTED PRIVATE KEY]",
+    ),
+]
 
 
 def main() -> int:
@@ -116,10 +133,20 @@ def task_error_log(task_log_path: Path) -> str:
         return "(task step did not produce a log; check the GitHub Actions run)"
 
     log_lines = task_log_path.read_text(errors="replace").splitlines()
-    error_log = "\n".join(log_lines[-MAX_ERROR_LOG_LINES:]).strip() or "(task log was empty)"
-    if len(error_log) > MAX_ERROR_LOG_CHARS:
-        return error_log[-MAX_ERROR_LOG_CHARS:]
-    return error_log
+    for line in reversed(log_lines):
+        sanitized_line = sanitize_text(line).strip()
+        if sanitized_line:
+            return sanitized_line
+    return "(task log was empty)"
+
+
+def sanitize_text(value: str) -> str:
+    import re
+
+    sanitized = value
+    for pattern, replacement in SENSITIVE_PATTERNS:
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.DOTALL)
+    return sanitized
 
 
 def post_json(webhook_url: str, payload: dict[str, Any]) -> None:

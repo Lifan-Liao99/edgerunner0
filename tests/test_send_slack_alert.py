@@ -11,7 +11,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.send_slack_alert import build_payload, main, task_error_log  # noqa: E402
+from scripts.send_slack_alert import build_payload, main, sanitize_text, task_error_log  # noqa: E402
 
 
 class LoggedTestCase(unittest.TestCase):
@@ -66,12 +66,21 @@ class SendSlackAlertTests(LoggedTestCase):
         self.assertEqual(payload["reason"], "task completed successfully")
         self.assertEqual(payload["error_log"], "")
 
-    def test_build_payload_includes_failure_reason_and_log_tail(self) -> None:
-        # Test: failed task runs should include reason plus the useful end of the task log.
-        # Expected: payload is failure and error_log keeps the final task log lines.
+    def test_build_payload_includes_failure_reason_and_last_sanitized_error_line(self) -> None:
+        # Test: failed task runs should include reason plus a short sanitized error.
+        # Expected: payload is failure and error_log contains only the final non-empty log line.
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "task.log"
-            log_path.write_text("\n".join(f"line {index}" for index in range(100)), encoding="utf-8")
+            log_path.write_text(
+                "\n".join(
+                    [
+                        "first line with token=should_not_appear",
+                        "",
+                        "RuntimeError: Authorization: Bearer secret-token",
+                    ]
+                ),
+                encoding="utf-8",
+            )
 
             payload = build_payload(
                 task_name="google_sheet_to_sheet",
@@ -88,13 +97,31 @@ class SendSlackAlertTests(LoggedTestCase):
 
         self.assertEqual(payload["task_status"], "failure")
         self.assertEqual(payload["reason"], "task exited with code `1`")
-        self.assertNotIn("line 0", payload["error_log"])
-        self.assertIn("line 99", payload["error_log"])
+        self.assertNotIn("first line", payload["error_log"])
+        self.assertNotIn("secret-token", payload["error_log"])
+        self.assertEqual(payload["error_log"], "RuntimeError: Authorization: Bearer [REDACTED]")
 
     def test_task_error_log_handles_missing_log(self) -> None:
         # Test: alerting should still work if the task step did not create a log file.
         # Expected: a readable placeholder is returned instead of raising.
         self.assertIn("did not produce a log", task_error_log(Path("missing.log")))
+
+    def test_sanitize_text_redacts_common_secret_shapes(self) -> None:
+        # Test: alerting should redact common credential shapes before sending Slack messages.
+        # Expected: known secret values are replaced with [REDACTED].
+        text = (
+            "api_key=abc123 password:super-secret "
+            "url=https://example.com/path?token=tok123&safe=value"
+        )
+
+        sanitized = sanitize_text(text)
+
+        self.assertNotIn("abc123", sanitized)
+        self.assertNotIn("super-secret", sanitized)
+        self.assertNotIn("tok123", sanitized)
+        self.assertIn("api_key=[REDACTED]", sanitized)
+        self.assertIn("password=[REDACTED]", sanitized)
+        self.assertIn("token=[REDACTED]", sanitized)
 
     def test_main_skips_when_webhook_secret_is_empty(self) -> None:
         # Test: missing Slack webhook should not fail the workflow.
