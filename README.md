@@ -703,3 +703,4 @@ from edgerunner.secrets import access_secret
 
 token = access_secret("projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET/versions/latest")
 ```
+
