@@ -623,77 +623,6 @@ shape, so you can build the success/failure wording in Slack using the variables
 above. `error_log` contains the last 80 task log lines on failure and is empty
 on success.
 
-## WIF Setup Reference
-
-These commands configure GitHub Actions in one repository to impersonate a
-service account in one GCP project. Fill in the five values at the top for your
-own environment; the rest of the script derives from them.
-
-```powershell
-$PROJECT_ID = "YOUR_PROJECT_ID"
-$REPO = "YOUR_GITHUB_OWNER/YOUR_GITHUB_REPO"
-$POOL_ID = "YOUR_POOL_ID"
-$PROVIDER_ID = "YOUR_PROVIDER_ID"
-$SA_NAME = "YOUR_SERVICE_ACCOUNT"
-$SA_EMAIL = "$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
-
-gcloud config set project $PROJECT_ID
-
-gcloud services enable `
-  iam.googleapis.com `
-  iamcredentials.googleapis.com `
-  sts.googleapis.com `
-  sheets.googleapis.com `
-  secretmanager.googleapis.com `
-  --project=$PROJECT_ID
-
-gcloud iam service-accounts create $SA_NAME `
-  --project=$PROJECT_ID `
-  --display-name="EdgeRunner GitHub Actions"
-
-gcloud iam workload-identity-pools create $POOL_ID `
-  --project=$PROJECT_ID `
-  --location="global" `
-  --display-name="GitHub Actions"
-
-gcloud iam workload-identity-pools providers create-oidc $PROVIDER_ID `
-  --project=$PROJECT_ID `
-  --location="global" `
-  --workload-identity-pool=$POOL_ID `
-  --display-name="$PROVIDER_ID GitHub provider" `
-  --issuer-uri="https://token.actions.githubusercontent.com" `
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref" `
-  --attribute-condition="assertion.repository == '$REPO'"
-
-$POOL_NAME = gcloud iam workload-identity-pools describe $POOL_ID `
-  --project=$PROJECT_ID `
-  --location="global" `
-  --format="value(name)"
-
-gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL `
-  --project=$PROJECT_ID `
-  --role="roles/iam.workloadIdentityUser" `
-  --member="principalSet://iam.googleapis.com/$POOL_NAME/attribute.repository/$REPO"
-
-$PROVIDER_NAME = gcloud iam workload-identity-pools providers describe $PROVIDER_ID `
-  --project=$PROJECT_ID `
-  --location="global" `
-  --workload-identity-pool=$POOL_ID `
-  --format="value(name)"
-
-Write-Host "GCP_WORKLOAD_IDENTITY_PROVIDER=$PROVIDER_NAME"
-Write-Host "GCP_SERVICE_ACCOUNT=$SA_EMAIL"
-```
-
-If a task reads Google Secret Manager secrets, grant the service account access:
-
-```powershell
-gcloud secrets add-iam-policy-binding YOUR_SECRET_NAME `
-  --project=$PROJECT_ID `
-  --role="roles/secretmanager.secretAccessor" `
-  --member="serviceAccount:$SA_EMAIL"
-```
-
 ## Secrets In Task Scripts
 
 For production, use a Secret Manager version address:
@@ -703,4 +632,3 @@ from edgerunner.secrets import access_secret
 
 token = access_secret("projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET/versions/latest")
 ```
-
