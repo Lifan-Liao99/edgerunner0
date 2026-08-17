@@ -3,8 +3,6 @@ name: "demo / github_cpython_repo_2"
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "36 16 * * *"
 
 permissions:
   contents: read
