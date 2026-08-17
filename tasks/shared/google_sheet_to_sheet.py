@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -7,9 +7,35 @@ import pandas as pd
 from edgerunner.sheets import read_records_from_sheet, write_records_to_sheet
 from edgerunner.task_config import (
     TaskSettings,
+    business_today,
     date_from_offset,
     run_task,
 )
+
+
+def local_fixture_records() -> list[dict[str, Any]]:
+    """Stand-in source rows for --skip-sheet runs.
+
+    Shaped like the real source tab: first column is the date the window filter
+    reads. The dates are relative to today rather than fixed, so some rows fall
+    inside the configured window and some outside. That way a local run actually
+    exercises filter_dataframe_by_date_window instead of passing an empty frame
+    through it, where any filtering bug would look like a pass.
+    """
+    today = business_today()
+    return [
+        {
+            "date": (today - timedelta(days=days_ago)).isoformat(),
+            "store": store,
+            "revenue": revenue,
+        }
+        for days_ago, store, revenue in (
+            (0, "store_a", "140.00"),
+            (2, "store_a", "220.50"),
+            (5, "store_b", "180.25"),
+            (30, "store_c", "90.75"),
+        )
+    ]
 
 
 def fetch_source_dataframe(settings: TaskSettings) -> pd.DataFrame:
@@ -17,6 +43,8 @@ def fetch_source_dataframe(settings: TaskSettings) -> pd.DataFrame:
         spreadsheet_id=settings["source_sheet_id"],
         tab_name=settings["source_tab_name"],
         read_range=settings.get("source_range"),
+        skip_sheet=settings.skip_sheet,
+        mock_response=local_fixture_records(),
     )
     return pd.DataFrame(records)
 
@@ -54,14 +82,14 @@ def run(settings: TaskSettings) -> dict[str, Any]:
         end_date=end_date,
     )
 
-    if not settings.skip_sheet:
-        write_records_to_sheet(
-            spreadsheet_id=settings.sheet_id,
-            tab_name=settings.tab_name,
-            records=filtered_dataframe,
-            write_mode=settings.get("sheet_write_mode", "replace"),
-            upsert_key_columns=settings.get("sheet_upsert_key_columns"),
-        )
+    write_records_to_sheet(
+        spreadsheet_id=settings.sheet_id,
+        tab_name=settings.tab_name,
+        records=filtered_dataframe,
+        write_mode=settings.get("sheet_write_mode", "replace"),
+        upsert_key_columns=settings.get("sheet_upsert_key_columns"),
+        skip_sheet=settings.skip_sheet,
+    )
 
     return {
         "task": settings.name,

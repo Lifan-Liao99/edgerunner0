@@ -71,6 +71,10 @@ class TaskSettings:
         return bool(self.params.get("gcp_auth", True))
 
     @property
+    def is_test(self) -> bool:
+        return bool(self.params.get("is_test", False))
+
+    @property
     def skip_sheet(self) -> bool:
         return bool(self.params.get("skip_sheet", False))
 
@@ -124,7 +128,7 @@ def parse_task_args() -> argparse.Namespace:
     shorthand_args = [arg for arg in unknown_args if arg.startswith("--")]
 
     if args.task_name and shorthand_args:
-        parser.error("Use either --task-name TASK or shorthand --task_name, not both.")
+        parser.error("Use either --task-name TASK or the shorthand --TASK_NAME (e.g. --my_task), not both.")
     if len(shorthand_args) > 1:
         parser.error(f"Expected one task shorthand, got: {', '.join(shorthand_args)}")
     if not args.task_name and shorthand_args:

@@ -59,18 +59,20 @@ def run(settings: TaskSettings) -> dict[str, Any]:
     record = transform_repo(fetch_repo(settings))
     load_info = load_with_dlt(settings, record)
 
-    if not settings.skip_sheet:
-        write_records_to_sheet(
-            spreadsheet_id=settings.sheet_id,
-            tab_name=settings.tab_name,
-            records=[record],
-            write_mode=settings.get("sheet_write_mode", "replace"),
-        )
+    sheet_rows = write_records_to_sheet(
+        spreadsheet_id=settings.sheet_id,
+        tab_name=settings.tab_name,
+        records=[record],
+        write_mode=settings.get("sheet_write_mode", "replace"),
+        skip_sheet=settings.skip_sheet,
+    )
 
     return {
         "task": settings.name,
         "record_count": 1,
         "wrote_sheet": not settings.skip_sheet,
+        # Header row plus data rows, whether or not the write actually happened.
+        "sheet_row_count": len(sheet_rows),
         "load_info": load_info,
     }
 

@@ -3,8 +3,17 @@
 # [[tasks]]
 # name = "my_task_name"                         # Framework config: unique task name.
 # script_path = "tasks/shared/my_task.py"       # Framework config: Python task script.
-# cron_setting = "0 14 * * *"                  # Optional: GitHub Actions cron in UTC.
+# cron_setting = "0 12 * * *"                  # Optional: GitHub Actions cron in New York time.
 # gcp_auth = true                              # Framework config: enable GCP auth in workflow.
+# is_test = true                               # Optional: load this task into the test workflow.
+#
+# is_test exists because GitHub only offers "Run workflow" for workflows that are
+# already on the default branch, so a brand new task's workflow cannot be
+# dispatched from a testing branch until it merges. The framework keeps
+# .github/workflows/test_workflow.yml on the default branch permanently, and
+# is_test = true copies your task's steps into it. Push your testing branch, then
+# run the "test workflow" workflow and select that branch. Only one task may set
+# is_test = true at a time; generation fails with an error if more than one does.
 #
 # Optional date-window defaults. Ignore these if your task does not need dates.
 # The framework interprets offsets from today's date in New York time.
@@ -28,15 +37,14 @@
 # This file only controls workflow generation. Each task's actual behavior lives
 # in its Python script under tasks/.
 #
-# cron_setting is UTC, because that is how GitHub Actions interprets it, and it
-# does not follow daylight saving. The values below target roughly 12:30 in the
-# US Eastern afternoon: 16:3x UTC is 12:3x EDT in summer and 11:3x EST in winter.
-# To hold the Eastern wall clock steady, shift these by an hour at each DST
-# change (2026: Mar 8 and Nov 1).
+# cron_setting is interpreted in America/New_York by generated workflows, so
+# daylight saving transitions are handled by GitHub Actions.
 
 [[tasks]]
+is_test = false
 name = "jsonplaceholder_posts"
 script_path = "tasks/demo/jsonplaceholder_posts.py"
+cron_setting = "28 12 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "jsonplaceholder_posts"
 gcp_auth = true
@@ -52,6 +60,7 @@ sheet_write_mode = "replace"
 [[tasks]]
 name = "github_cpython_repo"
 script_path = "tasks/demo/github_cpython_repo.py"
+cron_setting = "32 12 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "github_cpython_repo"
 gcp_auth = true
@@ -64,22 +73,9 @@ dlt_write_disposition = "replace"
 sheet_write_mode = "replace"
 
 [[tasks]]
-name = "github_cpython_repo_2"
-script_path = "tasks/demo/github_cpython_repo.py"
-sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
-tab_name = "github_cpython_repo_2"
-gcp_auth = true
-api_endpoint = "https://api.github.com/repos/python/cpython"
-api_timeout_seconds = 30
-dlt_pipeline_name = "github_cpython_repo_pipeline"
-dlt_dataset_name = "github"
-dlt_table_name = "repo_metadata"
-dlt_write_disposition = "replace"
-sheet_write_mode = "replace"
-
-[[tasks]]
 name = "google_sheet_to_sheet"
 script_path = "tasks/shared/google_sheet_to_sheet.py"
+cron_setting = "3 */2 * * *"
 sheet_id = "1WJKbiYBgNqkvRIxaXJX5V12nqKHfAT9t6Z3vpVjAdVU"
 tab_name = "target_tab"
 gcp_auth = true

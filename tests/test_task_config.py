@@ -118,6 +118,20 @@ class TaskConfigTests(LoggedTestCase):
         self.assertEqual(settings.sheet_id, "")
         self.assertEqual(settings.tab_name, "")
 
+    def test_is_test_defaults_to_false_and_reads_snake_case_field(self) -> None:
+        # Test: the test slot flag follows the same snake_case naming as other fields.
+        # Expected: omitted values default to false, while is_test=true reads as true.
+        self.assertFalse(TaskSettings({"name": "regular", "script_path": "tasks/a.py"}).is_test)
+        self.assertTrue(
+            TaskSettings(
+                {
+                    "name": "slot_task",
+                    "script_path": "tasks/a.py",
+                    "is_test": True,
+                }
+            ).is_test
+        )
+
     def test_load_all_task_settings_rejects_duplicate_names(self) -> None:
         # Test: task names are unique identifiers in tasks.toml.
         # Expected: duplicate names raise a clear ValueError instead of overwriting silently.

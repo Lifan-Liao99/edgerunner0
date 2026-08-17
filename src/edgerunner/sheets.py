@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from math import isfinite
 import json
+import os
 from typing import Any
 
 import google.auth
@@ -11,14 +12,23 @@ from googleapiclient.discovery import build
 
 
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
-CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+WRITE_MODES = ("replace", "append", "upsert")
 
-# Local runs authenticate with user ADC. A user refresh token only carries the
-# scopes granted at login time, so the Sheets scope has to be requested there
-# rather than here; cloud-platform is included so gcloud can attach a quota
-# project. In GitHub Actions the auth step supplies credentials instead.
-ADC_LOGIN_COMMAND = (
-    f"gcloud auth application-default login --scopes={SHEETS_SCOPE},{CLOUD_PLATFORM_SCOPE}"
+# Sheets access is GitHub Actions only. The workflow's 'Authenticate to Google
+# Cloud' step mints a short-lived service account token through Workload
+# Identity Federation, so no key material exists anywhere and the Sheets scope
+# is applied per token mint. Local runs deliberately have no path to a Sheet:
+# use --skip-sheet to exercise fetch and transform logic instead.
+SHEETS_REQUIRES_ACTIONS_MESSAGE = (
+    "Google Sheets access is only available in GitHub Actions, but this call "
+    "reached the Sheets API from a local run. Two things cause that:\n"
+    "  1. The run did not pass --skip-sheet on the command line.\n"
+    "  2. The task script did pass --skip-sheet, but does not forward it to the "
+    "helper. Every read_records_from_sheet and write_records_to_sheet call needs "
+    "skip_sheet=settings.skip_sheet.\n"
+    "Check the second one before re-checking your command line: the flag only "
+    "reaches the API layer if the script wires it through. To read or write a "
+    "real Sheet, push your branch and run the workflow instead."
 )
 
 
@@ -29,10 +39,27 @@ def write_records_to_sheet(
     records: list[dict[str, Any]] | Any,
     write_mode: str = "replace",
     upsert_key_columns: list[str] | tuple[str, ...] | None = None,
-) -> None:
-    service = _build_sheets_service()
+    skip_sheet: bool = False,
+) -> list[list[Any]]:
+    """Write records to a Sheet tab and return the rows that were written.
+
+    Pass `skip_sheet=settings.skip_sheet` rather than guarding the call site.
+    With `skip_sheet=True` no API call happens, but the rows that would have been
+    written are still built and returned, so a local run exercises the same
+    transform and can log or assert on the result.
+    """
+    # Validated before the skip check so a bad write_mode or a missing upsert key
+    # is caught during a local --skip-sheet run rather than only in CI.
+    if write_mode not in WRITE_MODES:
+        raise ValueError("write_mode must be one of 'replace', 'append', or 'upsert'")
+    if write_mode == "upsert":
+        _normalize_upsert_key_columns(upsert_key_columns)
 
     values = _tabular_data_to_values(records)
+    if skip_sheet:
+        return values
+
+    service = _build_sheets_service()
     target_range = f"{tab_name}!A1"
 
     if write_mode == "replace":
@@ -48,18 +75,14 @@ def write_records_to_sheet(
                 valueInputOption="RAW",
                 body={"values": values},
             ).execute()
-        return
-
-    if write_mode == "append":
+    elif write_mode == "append":
         _append_values(
             service=service,
             spreadsheet_id=spreadsheet_id,
             tab_name=tab_name,
             values=values,
         )
-        return
-
-    if write_mode == "upsert":
+    else:
         _upsert_values(
             service=service,
             spreadsheet_id=spreadsheet_id,
@@ -67,9 +90,8 @@ def write_records_to_sheet(
             values=values,
             upsert_key_columns=upsert_key_columns,
         )
-        return
 
-    raise ValueError("write_mode must be one of 'replace', 'append', or 'upsert'")
+    return values
 
 
 def _append_values(
@@ -256,7 +278,21 @@ def read_records_from_sheet(
     spreadsheet_id: str,
     tab_name: str,
     read_range: str | None = None,
+    skip_sheet: bool = False,
+    mock_response: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    """Read records from a Sheet tab.
+
+    Pass `skip_sheet=settings.skip_sheet` rather than guarding the call site.
+    With `skip_sheet=True` no API call happens and `mock_response` is returned
+    instead, so downstream transforms still run locally against realistically
+    shaped rows. Without a `mock_response` the result is an empty list.
+    """
+    if skip_sheet:
+        # Copied so a module-level fixture cannot be mutated by the caller and
+        # silently change what later runs see.
+        return list(mock_response) if mock_response is not None else []
+
     service = _build_sheets_service()
     range_name = read_range or tab_name
     values = service.spreadsheets().values().get(
@@ -267,8 +303,17 @@ def read_records_from_sheet(
 
 
 def _build_sheets_service():
+    _require_github_actions()
     credentials = _load_credentials()
     return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+
+
+def _require_github_actions() -> None:
+    # Fail before the API call so a local run gets this message rather than a
+    # 403 from Sheets about the user account behind whatever ADC happens to
+    # exist on the machine.
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        raise RuntimeError(SHEETS_REQUIRES_ACTIONS_MESSAGE)
 
 
 def _load_credentials():
@@ -277,16 +322,16 @@ def _load_credentials():
         return credentials
     except DefaultCredentialsError as exc:
         raise RuntimeError(
-            "Google Application Default Credentials were not found. For a local run, "
-            f"sign in with `{ADC_LOGIN_COMMAND}` and finish the browser login, or pass "
-            "--skip-sheet to skip the Sheets write. In GitHub Actions this means the "
-            "'Authenticate to Google Cloud' step did not run."
+            "Google Application Default Credentials were not found. The workflow's "
+            "'Authenticate to Google Cloud' step did not run or did not complete, so "
+            "no service account credentials are available."
         ) from exc
     except RefreshError as exc:
         raise RuntimeError(
-            "Google credentials were found but could not be refreshed. Run "
-            "`gcloud auth application-default revoke`, then sign in again with "
-            f"`{ADC_LOGIN_COMMAND}`."
+            "Google service account credentials were found but could not be refreshed. "
+            "Check that the GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT "
+            "secrets are correct and that the Workload Identity pool still trusts this "
+            "repository."
         ) from exc
 
 
