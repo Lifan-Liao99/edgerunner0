@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from edgerunner.sheets import _contiguous_ranges, _upsert_values  # noqa: E402
+from edgerunner.sheets import (  # noqa: E402
+    _build_sheets_service,
+    _contiguous_ranges,
+    _upsert_values,
+    read_records_from_sheet,
+    write_records_to_sheet,
+)
 
 
 class LoggedTestCase(unittest.TestCase):
@@ -61,6 +69,10 @@ class FakeValuesResource:
             return FakeRequest({"values": self.service.existing_values[:1]})
         raise AssertionError(f"Unexpected get range: {range}")
 
+    def clear(self, **kwargs):
+        self.service.cleared_range = kwargs["range"]
+        return FakeRequest({})
+
     def update(self, **kwargs):
         self.service.updated_values = kwargs["body"]["values"]
         return FakeRequest({})
@@ -94,6 +106,7 @@ class FakeSheetsService:
         self.updated_values: list[list[str]] | None = None
         self.appended_values: list[list[str]] | None = None
         self.batch_update_body: dict | None = None
+        self.cleared_range: str | None = None
 
     def spreadsheets(self):
         return FakeSpreadsheetsResource(self)
@@ -213,6 +226,210 @@ class SheetsTests(LoggedTestCase):
                 values=[["date"], ["2026-08-01"]],
                 upsert_key_columns=None,
             )
+
+
+class SkipSheetTests(LoggedTestCase):
+    # These run with GITHUB_ACTIONS unset, the same as a developer's machine. If
+    # skip_sheet ever stopped short-circuiting, _build_sheets_service would raise
+    # and the test would fail, which is the guarantee worth locking down.
+
+    def test_write_with_skip_sheet_makes_no_api_call(self) -> None:
+        # Test: skip_sheet must short-circuit before the Sheets client is built.
+        # Expected: no call reaches the API layer.
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("edgerunner.sheets._build_sheets_service") as service_mock,
+        ):
+            write_records_to_sheet(
+                spreadsheet_id="spreadsheet123",
+                tab_name="target",
+                records=[{"date": "2026-08-01", "store": "store_a"}],
+                skip_sheet=True,
+            )
+
+        service_mock.assert_not_called()
+
+    def test_write_with_skip_sheet_returns_the_rows_it_would_have_written(self) -> None:
+        # Test: the point of the skip path is still getting the transformed rows.
+        # Expected: header row plus one data row, in column order.
+        with patch.dict(os.environ, {}, clear=True):
+            rows = write_records_to_sheet(
+                spreadsheet_id="spreadsheet123",
+                tab_name="target",
+                records=[
+                    {"date": "2026-08-01", "store": "store_a"},
+                    {"date": "2026-08-02", "store": "store_b"},
+                ],
+                skip_sheet=True,
+            )
+
+        self.assertEqual(
+            rows,
+            [
+                ["date", "store"],
+                ["2026-08-01", "store_a"],
+                ["2026-08-02", "store_b"],
+            ],
+        )
+
+    def test_write_returns_the_same_rows_on_the_real_path(self) -> None:
+        # Test: callers should get one shape of return value either way, so the
+        # skip path is not a special case downstream.
+        # Expected: the returned rows match what was sent to the API.
+        service = FakeSheetsService(tab_name="target", existing_values=[])
+
+        with (
+            patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True),
+            patch("edgerunner.sheets._build_sheets_service", return_value=service),
+        ):
+            rows = write_records_to_sheet(
+                spreadsheet_id="spreadsheet123",
+                tab_name="target",
+                records=[{"date": "2026-08-01", "store": "store_a"}],
+            )
+
+        self.assertEqual(rows, [["date", "store"], ["2026-08-01", "store_a"]])
+        self.assertEqual(rows, service.updated_values)
+
+    def test_write_validates_write_mode_even_when_skipping(self) -> None:
+        # Test: a typo in sheet_write_mode should surface during a local run, not
+        # only once the task reaches GitHub Actions.
+        # Expected: the skip path still rejects it.
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, "write_mode must be one of"):
+                write_records_to_sheet(
+                    spreadsheet_id="spreadsheet123",
+                    tab_name="target",
+                    records=[{"date": "2026-08-01"}],
+                    write_mode="replce",
+                    skip_sheet=True,
+                )
+
+    def test_write_validates_upsert_key_columns_even_when_skipping(self) -> None:
+        # Test: same reasoning for a missing upsert key.
+        # Expected: the skip path still rejects it.
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, "upsert_key_columns is required"):
+                write_records_to_sheet(
+                    spreadsheet_id="spreadsheet123",
+                    tab_name="target",
+                    records=[{"date": "2026-08-01"}],
+                    write_mode="upsert",
+                    skip_sheet=True,
+                )
+
+    def test_read_with_skip_sheet_makes_no_api_call(self) -> None:
+        # Test: the read side has to short-circuit too.
+        # Expected: no call reaches the API layer.
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("edgerunner.sheets._build_sheets_service") as service_mock,
+        ):
+            read_records_from_sheet(
+                spreadsheet_id="spreadsheet123",
+                tab_name="source",
+                skip_sheet=True,
+            )
+
+        service_mock.assert_not_called()
+
+    def test_read_with_skip_sheet_returns_the_mock_response(self) -> None:
+        # Test: a fixture lets local runs exercise downstream transforms.
+        # Expected: the fixture rows come back unchanged.
+        fixture = [{"date": "2026-08-01", "store": "store_a"}]
+
+        with patch.dict(os.environ, {}, clear=True):
+            records = read_records_from_sheet(
+                spreadsheet_id="spreadsheet123",
+                tab_name="source",
+                skip_sheet=True,
+                mock_response=fixture,
+            )
+
+        self.assertEqual(records, fixture)
+
+    def test_read_with_skip_sheet_and_no_mock_returns_empty(self) -> None:
+        # Test: mock_response is optional.
+        # Expected: an empty list, not None, so callers can iterate either way.
+        with patch.dict(os.environ, {}, clear=True):
+            records = read_records_from_sheet(
+                spreadsheet_id="spreadsheet123",
+                tab_name="source",
+                skip_sheet=True,
+            )
+
+        self.assertEqual(records, [])
+
+    def test_read_does_not_hand_back_the_caller_fixture_object(self) -> None:
+        # Test: a module-level fixture reused across runs must not be mutable
+        # through the returned list, or one task could corrupt the next.
+        # Expected: mutating the result leaves the fixture intact.
+        fixture = [{"date": "2026-08-01"}]
+
+        with patch.dict(os.environ, {}, clear=True):
+            records = read_records_from_sheet(
+                spreadsheet_id="spreadsheet123",
+                tab_name="source",
+                skip_sheet=True,
+                mock_response=fixture,
+            )
+        records.append({"date": "2026-08-02"})
+
+        self.assertEqual(len(fixture), 1)
+
+
+class BackwardCompatibilityTests(LoggedTestCase):
+    def test_write_without_skip_sheet_still_hits_the_actions_gate(self) -> None:
+        # Test: skip_sheet defaults to False, so untouched call sites behave
+        # exactly as they did before this parameter existed.
+        # Expected: a local run still fails at the gate.
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "only available in GitHub Actions"):
+                write_records_to_sheet(
+                    spreadsheet_id="spreadsheet123",
+                    tab_name="target",
+                    records=[{"date": "2026-08-01"}],
+                )
+
+    def test_read_without_skip_sheet_still_hits_the_actions_gate(self) -> None:
+        # Test: same default for the read side.
+        # Expected: a local run still fails at the gate.
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "only available in GitHub Actions"):
+                read_records_from_sheet(spreadsheet_id="spreadsheet123", tab_name="source")
+
+
+class SheetsAuthGateTests(LoggedTestCase):
+    def test_building_the_service_outside_github_actions_raises(self) -> None:
+        # Test: Sheets access is GitHub Actions only.
+        # Expected: a local run is told to use --skip-sheet before any API call.
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "only available in GitHub Actions"):
+                _build_sheets_service()
+
+    def test_a_non_actions_value_does_not_open_the_gate(self) -> None:
+        # Test: the gate checks for the exact value GitHub Actions sets.
+        # Expected: GITHUB_ACTIONS set to anything else still refuses.
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "only available in GitHub Actions"):
+                _build_sheets_service()
+
+    def test_inside_github_actions_the_gate_defers_to_credentials(self) -> None:
+        # Test: in Actions the gate passes and normal credential loading happens.
+        # Expected: _load_credentials is reached and its result reaches build().
+        with (
+            patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True),
+            patch("edgerunner.sheets._load_credentials", return_value="fake-credentials"),
+            patch("edgerunner.sheets.build", return_value="fake-service") as build_mock,
+        ):
+            self.assertEqual(_build_sheets_service(), "fake-service")
+
+        build_mock.assert_called_once_with(
+            "sheets",
+            "v4",
+            credentials="fake-credentials",
+            cache_discovery=False,
+        )
 
 
 if __name__ == "__main__":

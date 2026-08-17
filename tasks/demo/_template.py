@@ -89,20 +89,34 @@ def run(settings: TaskSettings) -> dict[str, Any]:
     #     from edgerunner.sheets import write_records_to_sheet
     #
     #     records = [{"id": "123", "name": "Example"}]
-    #     if not settings.skip_sheet:
-    #         write_records_to_sheet(
-    #             spreadsheet_id=settings.sheet_id,
-    #             tab_name=settings.tab_name,
-    #             records=records,  # Also accepts a pandas DataFrame.
-    #             write_mode=settings.get("sheet_write_mode", "replace"),
-    #             upsert_key_columns=settings.get("sheet_upsert_key_columns"),
-    #         )
+    #     rows = write_records_to_sheet(
+    #         spreadsheet_id=settings.sheet_id,
+    #         tab_name=settings.tab_name,
+    #         records=records,  # Also accepts a pandas DataFrame.
+    #         write_mode=settings.get("sheet_write_mode", "replace"),
+    #         upsert_key_columns=settings.get("sheet_upsert_key_columns"),
+    #         skip_sheet=settings.skip_sheet,
+    #     )
+    #
+    # For Sheets input:
+    #
+    #     from edgerunner.sheets import read_records_from_sheet
+    #
+    #     source = read_records_from_sheet(
+    #         spreadsheet_id=settings["source_sheet_id"],
+    #         tab_name=settings["source_tab_name"],
+    #         skip_sheet=settings.skip_sheet,
+    #         mock_response=[{"id": "123", "name": "Example"}],
+    #     )
     #
     # Keys become column headers. Nested dicts are flattened by the Sheets helper;
     # lists and other non-scalar values are JSON encoded.
 
-    # `--skip-sheet` becomes settings.skip_sheet for local dry runs.
-    # Use it for any side effect you want to avoid during local checks.
+    # `--skip-sheet` becomes settings.skip_sheet. Do not branch on it yourself for
+    # Sheets calls: pass it to the helper instead. The helper skips the API call,
+    # and still returns the rows that would have been written, or the
+    # mock_response instead of a real read, so the rest of your logic runs
+    # unchanged locally. Branch on it directly only for other side effects.
 
     # Returning a value is optional. run_task prints non-None return values.
     return {

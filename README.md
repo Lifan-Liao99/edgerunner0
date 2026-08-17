@@ -1,12 +1,35 @@
 # EdgeRunner Automation Tasks
 
-This repo runs standalone Python automation scripts from GitHub Actions. Each
-task is a complete script under `tasks/`: it can call APIs, transform data, use
-`dlt`, write Google Sheets, trigger another service, or do any other custom
-automation.
+EdgeRunner exists to meet the Edge Program's automation needs inside the
+program's SOC 2 requirements. An Edge builder writes an ordinary Python script
+and describes how it should run in a config-driven TOML file; the framework turns
+that description into a scheduled, credential-free GitHub Actions workflow.
+
+Each task is a complete script under `tasks/`: it can call APIs, transform data,
+use `dlt`, write Google Sheets, trigger another service, or do any other custom
+automation. `config/tasks.toml` supplies its schedule, manual-run inputs, and
+per-task settings, so adding an automation means writing one script and one TOML
+block, not hand-editing YAML.
+
+How the compliance posture is held:
+
+- **Workload Identity Federation for identity.** GitHub Actions exchanges its
+  OIDC token for a short-lived Google Cloud service account token at run time. No
+  service account key is ever created, downloaded, or committed, so there is no
+  long-lived credential to rotate, leak, or audit.
+- **Google Secret Manager for secrets.** Task secrets live in GSM and are read at
+  run time through `src/edgerunner/secrets.py`. Nothing sensitive is stored in the
+  repo, in workflow files, or on a builder's laptop.
+- **GitHub Actions as the only privileged execution path.** Production runs
+  happen in CI, where identity and secrets are scoped and every run is logged.
+  Google Sheets access is available only there; local runs use `--skip-sheet`.
+- **Generated, reviewable workflows.** `scripts/generate_workflows.py` derives
+  every workflow from `config/tasks.toml`, with third-party actions pinned to
+  commit SHAs. Changes to what runs in production show up as a reviewable diff.
 
 The main execution path is GitHub Actions. Local setup is only needed when you
-want to edit or regenerate workflows from your machine.
+want to develop a task, exercise its fetch and transform logic with
+`--skip-sheet`, or regenerate workflows from your machine.
 
 ## Project Shape
 
@@ -18,6 +41,12 @@ want to edit or regenerate workflows from your machine.
 - `src/edgerunner/sheets.py`: small shared helper for writing records to Sheets.
 - `src/edgerunner/secrets.py`: small shared helper for Secret Manager.
 - `scripts/generate_workflows.py`: regenerates `.github/workflows/*.yml`.
+- `.github/workflows/test_workflow.yml`: permanent manual slot for testing a new
+  task from a branch before it merges.
+- `scripts/check_test_slot_cleared.py`: fails a pull request into `main` while
+  that slot is still loaded.
+- `scripts/describe_task.py`: prints a task's resolved config, so a test slot run
+  reports which task it is running.
 
 ## Local Setup
 
@@ -71,6 +100,16 @@ python3.11 -m venv .venv
 ./.venv/bin/python -m pip install -e .
 ./.venv/bin/python -c "import pandas as pd; print(pd.__version__)"
 ```
+
+Enable the pre-commit hook, once per clone, so the generated workflows stay in
+sync with `config/tasks.toml`:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+See [Enable The Local Git Hook](#6-enable-the-local-git-hook) for what it does and
+what you have to do by hand if you skip it.
 
 Run one task locally only if you want a quick manual check:
 
@@ -204,10 +243,15 @@ Required fields:
 
 Optional framework fields:
 
-- `cron_setting`: GitHub Actions cron in UTC. Add this only when the task should
-  run automatically.
+- `cron_setting`: GitHub Actions cron in New York time. Add this only when the
+  task should run automatically.
 - `gcp_auth`: whether the generated workflow should authenticate to GCP.
   Defaults to `true` when omitted.
+- `is_test`: load this task into the permanent test workflow so it can be
+  dispatched from a testing branch. Defaults to `false`. At most one task may set
+  it to `true`, and it must be back to `false` before merging: a pull request
+  into `main` fails while it is on. See
+  [Testing A New Task From A Branch](#testing-a-new-task-from-a-branch).
 - `sheet_id`: the default Google Sheet ID. Add this when your script reads from
   or writes to a Google Sheet.
 - `tab_name`: the default Sheet tab name. Add this when your script reads from
@@ -273,12 +317,12 @@ If the task should only run manually from GitHub Actions, do not add
 If the task should run on a schedule, add `cron_setting`:
 
 ```toml
-cron_setting = "0 13,21 * * *"
+cron_setting = "0 9,17 * * *"
 ```
 
-GitHub Actions cron is always UTC. The example above runs at 13:00 UTC and
-21:00 UTC every day. During New York daylight time, that is 9:00 AM and 5:00 PM
-New York time.
+Generated workflows attach `timezone: "America/New_York"` to scheduled runs. The
+example above runs at 9:00 AM and 5:00 PM New York time, with daylight saving
+time handled by GitHub Actions.
 
 Why this matters: manual-only demo tasks should not have cron. Production
 automations that must run every day should have cron.
@@ -314,17 +358,78 @@ python tasks/my_client/my_job.py --task-name my_job
 That is why `name` and `script_path` both matter: `script_path` selects the
 file, and `--task-name` selects the TOML entry.
 
+Step 6 automates this command so you do not have to remember it.
+
 ### 6. Enable The Local Git Hook
 
-Do this once per local clone:
+The workflows under `.github/workflows/` are generated from `config/tasks.toml`.
+They are committed to the repo, so they only stay correct if someone regenerates
+them after every config change. The hook does that for you.
+
+Do this once per local clone, on Windows and macOS alike:
 
 ```powershell
 git config core.hooksPath .githooks
 ```
 
-Why this matters: when you commit a change to `config/tasks.toml`, the hook
-automatically runs `scripts/generate_workflows.py` so the generated workflow
-stays in sync with the TOML.
+Verify it took effect:
+
+```powershell
+git config --get core.hooksPath
+```
+
+That should print `.githooks`. If it prints nothing, the hook is **not** enabled.
+
+This setting lives in `.git/config`, which is not part of the repo, so cloning
+the repo does not bring it along. Every person on every machine has to run it
+once.
+
+When it is enabled, committing a change to `config/tasks.toml` prints:
+
+```text
+config/tasks.toml is staged; regenerating GitHub workflows...
+Wrote .github\workflows\my_client__my_job.yml
+Wrote .github\workflows\test_workflow.yml (empty)
+Regenerated workflows have been staged.
+```
+
+The regenerated files are staged into the same commit, so the config and the
+workflows never separate. If generation fails, for example because two tasks set
+`is_test = true`, the commit is aborted and the error tells you what to fix.
+
+#### If You Do Not Enable The Hook
+
+Then regenerating is on you. Run this yourself every time you change
+`config/tasks.toml`, and commit the result together with the config:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_workflows.py
+```
+
+macOS:
+
+```bash
+./.venv/bin/python scripts/generate_workflows.py
+```
+
+Forgetting is the failure mode worth understanding, because nothing breaks
+loudly. The config and the workflows simply drift: GitHub keeps running the old
+generated YAML, so a new cron time, a renamed script, or a new
+`workflow_dispatch` input silently does not take effect. The most confusing case
+is the test slot, where `config/tasks.toml` says `is_test = false` but
+`.github/workflows/test_workflow.yml` still holds a full copy of the task, leaving
+it dispatchable from `main`.
+
+The `Test Slot Guard` check on pull requests into `main` catches that specific
+drift, but it only covers the test slot. Regenerating is still your job.
+
+To check whether your working tree has drifted, regenerate and look at
+`git status`. Clean output means you were in sync:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_workflows.py
+git status --short
+```
 
 ### 7. Test The Task Locally
 
@@ -342,7 +447,71 @@ You can also use the shorthand task name:
 
 Why this matters: local runs catch basic Python errors before you push. The
 `--skip-sheet` flag is available to the script as `settings.skip_sheet`, so Sheet
-writing tasks can safely test read/transform logic without changing a Sheet.
+tasks can test fetch and transform logic without touching a Sheet.
+
+`--skip-sheet` is required locally, not optional. Google Sheets access works only
+inside GitHub Actions, where the workflow mints a short-lived service account
+token. A local run that reaches `read_records_from_sheet` or
+`write_records_to_sheet` fails with a clear error instead of contacting the API.
+To exercise the real Sheet, push your branch and run the workflow.
+
+#### Wiring `skip_sheet` Into Your Task
+
+Do not branch on `settings.skip_sheet` yourself. Pass it to the Sheets helpers
+and let them handle it, so the rest of your task runs identically either way:
+
+```python
+from edgerunner.sheets import read_records_from_sheet, write_records_to_sheet
+
+def run(settings):
+    source = read_records_from_sheet(
+        spreadsheet_id=settings["source_sheet_id"],
+        tab_name=settings["source_tab_name"],
+        skip_sheet=settings.skip_sheet,
+        mock_response=[{"date": "2026-08-01", "store": "store_a", "revenue": "140.00"}],
+    )
+
+    records = transform(source)
+
+    rows = write_records_to_sheet(
+        spreadsheet_id=settings.sheet_id,
+        tab_name=settings.tab_name,
+        records=records,
+        write_mode=settings.get("sheet_write_mode", "replace"),
+        skip_sheet=settings.skip_sheet,
+    )
+
+    return {"task": settings.name, "sheet_row_count": len(rows)}
+```
+
+What each helper does when `skip_sheet=True`:
+
+- `read_records_from_sheet` returns `mock_response` without calling the API, or
+  `[]` if you did not pass one. A fixture is worth writing: it lets your
+  transform and filter logic run against realistically shaped rows locally.
+  [`tasks/shared/google_sheet_to_sheet.py`](tasks/shared/google_sheet_to_sheet.py)
+  builds its fixture dates relative to today, so its date-window filter both
+  selects and rejects rows during a local run instead of passing an empty frame
+  through untested.
+- `write_records_to_sheet` skips the API call but still builds and returns the
+  rows it would have written, as `list[list[Any]]` with the header row first. It
+  returns those same rows on the real path too, so you get one shape of return
+  value in both cases.
+
+Both helpers still validate before skipping, so a bad `write_mode` or a missing
+`upsert_key_columns` fails on your machine rather than in CI.
+
+Both parameters default to off. Omitting them keeps the old behavior: the call
+tries to reach the API and hits the GitHub Actions gate locally.
+
+If a local run fails with the Sheets gate error even though you passed
+`--skip-sheet`, the usual cause is a call site that does not forward it. The
+error says so; check your `skip_sheet=settings.skip_sheet` arguments before
+re-checking the command line.
+
+The cloud path is deliberately unchanged. Generated workflows never pass
+`--skip-sheet`, so GitHub Actions always uses the real API. There is no dry-run
+switch in CI.
 
 ### 8. Push To A Testing Branch And Run In GitHub Actions
 
@@ -366,13 +535,139 @@ testing branch, not directly on `main`. That lets you test credentials,
 workflow_dispatch inputs, Sheet permissions, API access, and logs before asking
 for review.
 
-Open the Actions tab in GitHub and select the generated workflow. Use the branch
-dropdown to choose your `testing-{description}` branch.
+Open the Actions tab in GitHub and select the workflow. Use the branch dropdown
+to choose your `testing-{description}` branch.
 
-For a manual-only task, choose the generated workflow and click **Run workflow**.
+For an existing task, choose its generated workflow and click **Run workflow**.
 For a scheduled task, GitHub runs it from the default branch according to
 `cron_setting`, but you should still manually run it once from your testing
 branch before merging.
+
+For a **brand new** task, its generated workflow is not dispatchable yet. Use the
+test workflow described below.
+
+#### Testing A New Task From A Branch
+
+**The problem.** GitHub only offers **Run workflow** for workflows that already
+exist on the default branch. The workflow you just generated for your new task
+lives only on your testing branch, so it does not appear in the Actions tab at
+all. You cannot run it until it merges, which is backwards: you want to prove it
+works *before* asking for review.
+
+**The solution.** The framework keeps a permanent slot at
+`.github/workflows/test_workflow.yml`. It is always generated, never deleted, and
+always named `test workflow`, so it sits on the default branch forever and can be
+dispatched against any branch. Setting `is_test = true` copies your task's steps
+into it.
+
+Full walkthrough:
+
+**1. Point the slot at your task.** Add `is_test = true` to your task in
+`config/tasks.toml`:
+
+```toml
+[[tasks]]
+name = "my_job"
+script_path = "tasks/my_client/my_job.py"
+is_test = true
+```
+
+**2. Regenerate and commit.** With the pre-commit hook enabled, a normal commit
+is enough, because staging `config/tasks.toml` triggers regeneration:
+
+```powershell
+git add config\tasks.toml tasks\my_client\my_job.py
+git commit -m "Add my_job automation task"
+```
+
+Without the hook, regenerate first and stage the result too:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_workflows.py
+git add config\tasks.toml tasks\my_client\my_job.py .github\workflows
+git commit -m "Add my_job automation task"
+```
+
+Either way, confirm the slot picked up your task. The generator prints which task
+it holds:
+
+```text
+Wrote .github\workflows\test_workflow.yml (holding my_job)
+```
+
+If it prints `(empty)` instead, `is_test = true` did not land in the config.
+
+**3. Push the branch.**
+
+```powershell
+git push -u origin testing-my-job
+```
+
+**4. Run it.** Open the Actions tab, select **test workflow** in the left
+sidebar, click **Run workflow**, and pick your `testing-{description}` branch in
+the branch dropdown. GitHub reads the workflow file from the branch you select,
+so it runs your task's steps: your `workflow_dispatch` inputs, GCP auth through
+Workload Identity Federation, the real Sheets write, and Slack alerting.
+
+**5. Check the run.** The slot is always named `test workflow`, so the run page
+does not say which task it holds. Its first real step, `Report the task under
+test`, prints that for you before the slower install and auth steps:
+
+```text
+## Task under test: `my_job`
+
+Script: `tasks/my_client/my_job.py`
+```
+
+The same report is written to the run's **Summary** page, so you can confirm the
+task and its settings without opening the log. It reads `config/tasks.toml` from
+the branch you selected and applies your `workflow_dispatch` inputs, so the values
+shown are the ones the task actually runs with. If the task name is not what you
+expected, the slot was generated from a different config than the one you just
+pushed.
+
+After that, the usual checklist: green run, expected inputs and row counts in the
+log, expected output in the target Sheet.
+
+**6. Clear the slot before opening the PR.** Set `is_test = false` (or delete the
+line), commit so the workflow regenerates, and push:
+
+```text
+Wrote .github\workflows\test_workflow.yml (empty)
+```
+
+When you open a pull request into `main`, the `Auto-clear Test Slot` workflow
+also tries to do this cleanup for you: it sets any `is_test = true` entries back
+to `false`, regenerates the test workflow, and pushes a small commit back to your
+branch. It only runs automatically when the PR is opened, so later pushes to the
+same PR can temporarily set `is_test = true` again for reviewer-requested
+retests without being cleared immediately. After a retest, either clear the slot
+manually or run the `Auto-clear Test Slot` workflow from the Actions tab with the
+PR branch name as its `branch` input.
+
+This is a convenience layer, not the source of truth. If branch protection or
+repository settings do not allow workflows to push commits, the push step will
+fail with Git's permission error. If the pull request comes from a fork, the
+default `GITHUB_TOKEN` usually cannot write to the fork branch, so the automatic
+cleanup may not run successfully. In those cases, clear the slot manually; the
+`Test Slot Guard` check still catches anything left behind.
+
+Notes and guardrails:
+
+- **Only one task may set `is_test = true`.** Generation fails with an error
+  naming every offending task, and the pre-commit hook runs the generator, so an
+  ambiguous config cannot reach GitHub.
+- **A pull request into `main` fails while the slot is loaded.** The `Test Slot
+  Guard` workflow runs `scripts/check_test_slot_cleared.py`, which checks both
+  the config and the generated file. That second check matters: turning off
+  `is_test` without regenerating would leave a stale copy of your task
+  dispatchable on `main`.
+- **The slot never carries `cron_setting`.** It is manual only, so a scheduled
+  task does not start firing twice per cron tick. The task's own generated
+  workflow keeps the schedule.
+- **`is_test` does not replace the task's own workflow.** Both are generated.
+- **Do not delete `test_workflow.yml`.** The guard treats a missing slot as a
+  failure, because deleting it from `main` breaks branch testing for everyone.
 
 If the task uses GCP, make sure the repo has these GitHub secrets:
 
@@ -527,9 +822,9 @@ be `["date"]`; a composite key can be `["date", "store_id"]`.
 ### Sheet To Sheet Task
 
 `tasks/shared/google_sheet_to_sheet.py` copies rows from one Google Sheet tab to another
-Google Sheet tab. It reads columns A:F, treats the first source row as the header
-row, filters records whose column A date is between 5 days ago and yesterday,
-then writes the filtered pandas DataFrame to the target tab.
+Google Sheet tab. It reads the configured `source_range` (or the full tab when omitted),
+treats the first source row as headers, filters rows whose first column date falls between
+the configured `start_date_offset` and `end_date_offset`, then writes the filtered pandas DataFrame to the target tab.
 
 Update this entry in `config/tasks.toml` before running it:
 
@@ -537,7 +832,7 @@ Update this entry in `config/tasks.toml` before running it:
 [[tasks]]
 name = "google_sheet_to_sheet"
 script_path = "tasks/shared/google_sheet_to_sheet.py"
-cron_setting = "40 16 * * *"
+cron_setting = "40 12 * * *"
 sheet_id = "TARGET_GOOGLE_SHEET_ID"
 tab_name = "target_tab"
 gcp_auth = true
@@ -555,16 +850,19 @@ manual_overrides = [
 ]
 ```
 
-Run it locally without writing the target Sheet:
+Run it locally to check the date filter and the rest of the script:
 
 ```powershell
 .\.venv\Scripts\python.exe tasks\shared\google_sheet_to_sheet.py --google_sheet_to_sheet --skip-sheet
 ```
 
-Run it locally and write the target Sheet:
+With `--skip-sheet` this task skips the source read as well as the target write,
+so it runs against an empty frame and reports `source_record_count: 0`. Both ends
+touch Sheets, and Sheets is reachable only from GitHub Actions. To move real data,
+run the workflow:
 
 ```powershell
-.\.venv\Scripts\python.exe tasks\shared\google_sheet_to_sheet.py --google_sheet_to_sheet
+gh workflow run "shared / google_sheet_to_sheet"
 ```
 
 This task uses the GitHub Actions service account from the `GCP_SERVICE_ACCOUNT`
@@ -591,7 +889,7 @@ GCP_SERVICE_ACCOUNT=YOUR_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com
 
 Each generated workflow has exactly one job and can be run manually with
 `workflow_dispatch`. When `cron_setting` is present, the cron runs on the
-default branch in UTC.
+default branch in `America/New_York`.
 
 ## Slack Alerts
 
