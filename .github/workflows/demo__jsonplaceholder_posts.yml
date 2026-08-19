@@ -3,9 +3,6 @@ name: "demo / jsonplaceholder_posts"
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "28 12 * * *"
-      timezone: "America/New_York"
 
 permissions:
   contents: read

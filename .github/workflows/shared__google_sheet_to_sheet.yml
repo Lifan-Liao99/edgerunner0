@@ -16,9 +16,6 @@ on:
         description: "End date, YYYY-MM-DD. Converted to end_date_offset using New York time."
         required: false
         type: string
-  schedule:
-    - cron: "3 */2 * * *"
-      timezone: "America/New_York"
 
 permissions:
   contents: read
